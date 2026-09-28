@@ -113,8 +113,18 @@
 
     <!-- EOD tab -->
     <div id="tab-eod" class="tab-body" hidden>
+      <p id="eod-last" class="muted small eod-last" hidden></p>
       <div class="eod-summary" id="eod-summary"></div>
-      <form id="eod-form" class="stack">
+      <form id="eod-form" class="stack" novalidate>
+        <label>
+          <span>Dials today</span>
+          <input name="dials" type="number" inputmode="numeric" min="0" max="5000" placeholder="From WAVV, e.g. 512" />
+        </label>
+        <div id="eod-checks" class="checks" hidden>
+          <h3>Daily targets</h3>
+          <ul id="eod-checks-list"></ul>
+          <p class="muted small">Booked is counted from the calls you logged.</p>
+        </div>
         <label>
           <span>What worked well today?</span>
           <textarea name="went_well" rows="3" maxlength="2000"></textarea>
@@ -124,7 +134,7 @@
           <textarea name="improve" rows="3" maxlength="2000"></textarea>
         </label>
         <label>
-          <span>Blockers? <em>(leads, tech, script…)</em></span>
+          <span><span id="blockers-label">Blockers?</span> <em id="blockers-hint">(leads, tech, script…)</em></span>
           <textarea name="blockers" rows="2" maxlength="2000"></textarea>
         </label>
         <fieldset class="energy">
@@ -132,7 +142,8 @@
           <div class="energy-row" id="energy-row"></div>
         </fieldset>
         <p id="eod-msg" class="msg" hidden></p>
-        <button class="btn primary" type="submit" id="eod-submit">Sign off the day</button>
+        <button class="btn primary" type="submit" id="eod-submit">Sign off &amp; close the day</button>
+        <p class="muted small center">Closes your day and resets your counters for the next shift.</p>
       </form>
     </div>
   </section>

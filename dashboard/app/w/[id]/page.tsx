@@ -18,10 +18,13 @@ type RepStat = {
   last_log: string | null;
   eods: number;
   avg_energy: number | null;
+  dials: number;
+  days_hit: number;
   stages: Record<string, number> | null;
 };
 type Stats = {
-  totals: { conversations: number; booked: number; active_reps: number };
+  totals: { conversations: number; booked: number; active_reps: number; dials: number };
+  targets: { min_dials: number | null; min_booked: number | null };
   reps: RepStat[];
   outcomes: Opt[];
   stages: Opt[];
@@ -76,7 +79,7 @@ export default async function Dashboard({
   const [{ data: eods }, { data: notes }] = await Promise.all([
     supabase
       .from("eods")
-      .select("id,day,conversations,booked,went_well,improve,blockers,energy,updated_at,rep:profiles(full_name,email)")
+      .select("id,day,dials,conversations,booked,went_well,improve,blockers,energy,updated_at,rep:profiles(full_name,email)")
       .eq("workspace_id", id)
       .gte("day", win.fromDay)
       .order("day", { ascending: false })
@@ -103,6 +106,15 @@ export default async function Dashboard({
   const today = tzDate(TEAM_TZ);
   const eodsToday = (eods ?? []).filter((e) => e.day === today).length;
   const blockers = (eods ?? []).filter((e) => e.blockers);
+
+  // Daily targets
+  const t = stats.targets ?? { min_dials: null, min_booked: null };
+  const hasTargets = t.min_dials != null || t.min_booked != null;
+  const dialsOk = (d: number | null) => t.min_dials == null || (d ?? 0) >= t.min_dials;
+  const bookedOk = (b: number) => t.min_booked == null || b >= t.min_booked;
+  const hitDay = (e: { dials: number | null; booked: number }) => dialsOk(e.dials) && bookedOk(e.booked);
+  const eodsHitToday = (eods ?? []).filter((e) => e.day === today && hitDay(e)).length;
+  const eodsHitRange = (eods ?? []).filter(hitDay).length;
 
   // Fill in days without calls so the trend is honest.
   const byDay = new Map(stats.daily.map((d) => [d.day, d]));
@@ -133,6 +145,10 @@ export default async function Dashboard({
         {/* KPIs */}
         <section className="kpis">
           <div className="kpi">
+            <span>Dials</span>
+            <b>{stats.totals.dials.toLocaleString()}</b>
+          </div>
+          <div className="kpi">
             <span>Conversations</span>
             <b>{conversations}</b>
           </div>
@@ -145,10 +161,10 @@ export default async function Dashboard({
             <b>{pct(booked, conversations)}</b>
           </div>
           <div className="kpi">
-            <span>Active reps</span>
+            <span>{range === "today" ? "Hit targets today" : "Days on target"}</span>
             <b>
-              {stats.totals.active_reps}
-              <small>/{repCount}</small>
+              {hasTargets ? (range === "today" ? eodsHitToday : eodsHitRange) : "–"}
+              {hasTargets && <small>/{range === "today" ? repCount : eods?.length ?? 0}</small>}
             </b>
           </div>
           <div className="kpi">
@@ -216,11 +232,12 @@ export default async function Dashboard({
                 <thead>
                   <tr>
                     <th>Rep</th>
+                    <th className="num">Dials</th>
                     <th className="num">Conversations</th>
                     <th className="num">Booked</th>
                     <th className="num">Book rate</th>
                     <th>Most died at</th>
-                    <th className="num">EODs</th>
+                    <th className="num">On target</th>
                     <th className="num">Energy</th>
                     <th>Last log</th>
                   </tr>
@@ -235,6 +252,7 @@ export default async function Dashboard({
                           <b>{name(r)}</b>
                           {r.role === "manager" && <span className="tag">manager</span>}
                         </td>
+                        <td className="num">{r.dials ? r.dials.toLocaleString() : "—"}</td>
                         <td className="num">{r.conversations}</td>
                         <td className="num good-text">{r.booked}</td>
                         <td className="num">{pct(r.booked, r.conversations)}</td>
@@ -247,7 +265,15 @@ export default async function Dashboard({
                             <span className="muted">—</span>
                           )}
                         </td>
-                        <td className="num">{r.eods}</td>
+                        <td className="num">
+                          {r.eods ? (
+                            <span className={`hit ${r.days_hit === r.eods ? "ok" : "miss"}`}>
+                              {r.days_hit}/{r.eods} days
+                            </span>
+                          ) : (
+                            <span className="muted">no EODs</span>
+                          )}
+                        </td>
                         <td className="num">{r.avg_energy ?? "—"}</td>
                         <td className="muted">{relativeTime(r.last_log)}</td>
                       </tr>
@@ -291,7 +317,15 @@ export default async function Dashboard({
                         })}
                       </span>
                       <span className="eod-stats">
-                        {e.conversations} convos · <span className="good-text">{e.booked} booked</span>
+                        {t.min_dials != null || e.dials != null ? (
+                          <span className={`hit ${dialsOk(e.dials) ? "ok" : "miss"}`}>
+                            {dialsOk(e.dials) ? "✓" : "✗"} {e.dials ?? "?"} dials
+                          </span>
+                        ) : null}{" "}
+                        <span className={`hit ${bookedOk(e.booked) ? "ok" : "miss"}`}>
+                          {bookedOk(e.booked) ? "✓" : "✗"} {e.booked} booked
+                        </span>{" "}
+                        · {e.conversations} convos
                       </span>
                       {e.energy && (
                         <span className="energy" title="Energy (1–5)">

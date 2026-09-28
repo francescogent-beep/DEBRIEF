@@ -72,7 +72,7 @@ async function afterLogin() {
     const uid = currentUser().id;
     state.memberships = await db.select(
       "memberships",
-      `select=role,workspace:workspaces(id,name)&user_id=eq.${uid}&active=eq.true`
+      `select=role,workspace:workspaces(id,name,min_dials,min_booked)&user_id=eq.${uid}&active=eq.true`
     );
   } catch (e) {
     if (e.status === 401) return show("auth");
@@ -105,6 +105,8 @@ function renderWorkspaceSelect() {
 
 async function loadWorkspace() {
   await chrome.storage.local.set({ [WS_KEY]: state.wsId });
+  const ws = state.memberships.find((m) => m.workspace.id === state.wsId)?.workspace || {};
+  state.targets = { min_dials: ws.min_dials ?? null, min_booked: ws.min_booked ?? null };
   const opts = await db.select(
     "options",
     `select=id,kind,label,is_success,sort&workspace_id=eq.${state.wsId}&active=eq.true&order=sort.asc`
@@ -359,23 +361,40 @@ async function flushQueue() {
 setInterval(() => { if (currentUser()) flushQueue().catch(() => {}); }, 60_000);
 
 // ---------------------------------------------------------------------------
-// Today
+// Today = the current shift. A shift starts right after the rep's last EOD
+// sign-off (so a shift can run past midnight), and never looks back more
+// than 18 hours in case someone forgot to sign off.
 // ---------------------------------------------------------------------------
-function startOfToday() {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-function localDay() {
-  const d = new Date();
+const SHIFT_MAX_MS = 18 * 60 * 60 * 1000;
+
+function dayOf(d) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
+function shiftStart() {
+  const floor = Date.now() - SHIFT_MAX_MS;
+  const last = state.lastEod ? new Date(state.lastEod.updated_at).getTime() : 0;
+  return new Date(Math.max(floor, last));
+}
+
+// The calendar day this shift belongs to: the day its first call was logged.
+function shiftDay() {
+  const first = state.logs[state.logs.length - 1];
+  return dayOf(first ? new Date(first.created_at) : new Date());
+}
+
 async function loadToday() {
+  const me = currentUser().id;
+  const [last] = await db.select(
+    "eods",
+    `select=day,dials,booked,conversations,went_well,improve,blockers,energy,updated_at` +
+      `&workspace_id=eq.${state.wsId}&rep_id=eq.${me}&order=updated_at.desc&limit=1`
+  );
+  state.lastEod = last || null;
   state.logs = await db.select(
     "call_logs",
     `select=id,outcome_id,stage_id,objection_id,note,created_at&workspace_id=eq.${state.wsId}` +
-      `&rep_id=eq.${currentUser().id}&created_at=gte.${encodeURIComponent(startOfToday().toISOString())}` +
+      `&rep_id=eq.${me}&created_at=gt.${encodeURIComponent(shiftStart().toISOString())}` +
       `&order=created_at.desc&limit=1000`
   );
   renderToday();
@@ -426,13 +445,17 @@ function renderToday() {
 }
 
 // ---------------------------------------------------------------------------
-// End of day
+// End of day: targets check + sign-off. Signing off closes the day.
 // ---------------------------------------------------------------------------
 function top(field) {
   const tally = new Map();
   for (const l of state.logs) if (l[field]) tally.set(l[field], (tally.get(l[field]) || 0) + 1);
   const [id, n] = [...tally.entries()].sort((a, b) => b[1] - a[1])[0] || [];
   return id ? `${state.byId.get(id)?.label} (${n})` : "—";
+}
+
+function fmtDay(day) {
+  return new Date(`${day}T12:00:00`).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
 }
 
 function renderEodSummary() {
@@ -447,6 +470,51 @@ function renderEodSummary() {
       el("dt", { textContent: "Top objection" }), el("dd", { textContent: top("objection_id") })
     )
   );
+  const last = state.lastEod;
+  $("#eod-last").hidden = !last;
+  if (last) {
+    $("#eod-last").textContent =
+      `Last sign-off: ${fmtDay(last.day)} · ${last.dials ?? "–"} dials · ${last.booked} booked. ` +
+      `Everything since then counts as a new day.`;
+  }
+  renderChecks();
+}
+
+// Returns { rows, missed } for the target checklist.
+function targetChecks() {
+  const t = state.targets || {};
+  const dialsRaw = $("#eod-form").dials.value;
+  const dials = dialsRaw === "" ? null : Number(dialsRaw);
+  const { booked } = counts();
+  const rows = [];
+  if (t.min_dials != null) {
+    rows.push({ label: `${t.min_dials} dials`, value: dials == null ? "—" : dials, ok: dials != null && dials >= t.min_dials, pending: dials == null });
+  }
+  if (t.min_booked != null) {
+    rows.push({ label: `${t.min_booked} booked`, value: booked, ok: booked >= t.min_booked, pending: false });
+  }
+  return { rows, missed: rows.some((r) => !r.ok && !r.pending), dials };
+}
+
+function renderChecks() {
+  const { rows, missed } = targetChecks();
+  $("#eod-checks").hidden = rows.length === 0;
+  $("#eod-checks-list").replaceChildren(
+    ...rows.map((r) =>
+      el(
+        "li",
+        { className: r.pending ? "pending" : r.ok ? "ok" : "miss" },
+        el("span", { className: "mark", textContent: r.pending ? "○" : r.ok ? "✓" : "✗" }),
+        el("span", { className: "lbl", textContent: `Minimum ${r.label}` }),
+        el("b", { textContent: r.value })
+      )
+    )
+  );
+  // A missed target needs a reason.
+  const blockers = $("#eod-form").blockers;
+  blockers.required = missed;
+  $("#blockers-label").textContent = missed ? "Missed a target — what got in the way?" : "Blockers?";
+  $("#blockers-hint").hidden = missed;
 }
 
 function renderEnergy() {
@@ -461,52 +529,54 @@ function renderEnergy() {
 }
 
 async function loadEod() {
-  const form = $("#eod-form");
-  form.reset();
+  $("#eod-form").reset();
   state.energy = null;
   message("#eod-msg", "");
-  $("#eod-submit").textContent = "Sign off the day";
-  const [existing] = await db.select(
-    "eods",
-    `select=*&workspace_id=eq.${state.wsId}&rep_id=eq.${currentUser().id}&day=eq.${localDay()}`
-  );
-  if (existing) {
-    form.went_well.value = existing.went_well || "";
-    form.improve.value = existing.improve || "";
-    form.blockers.value = existing.blockers || "";
-    state.energy = existing.energy;
-    $("#eod-submit").textContent = "Update sign-off";
-  }
   renderEnergy();
   renderEodSummary();
 }
 
+$("#eod-form").dials.addEventListener("input", renderChecks);
+
 $("#eod-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target;
+  const { missed, dials } = targetChecks();
+  if (dials == null) return message("#eod-msg", "Enter how many dials you made today.");
   if (!state.energy) return message("#eod-msg", "Pick your energy level (1–5).");
-  const { convos, booked } = counts();
+  if (missed && !f.blockers.value.trim()) return message("#eod-msg", "You missed a target — add a quick note on what got in the way.");
+
+  let { convos, booked } = counts();
+  let totalDials = dials;
+  const day = shiftDay();
+  const text = (v) => v.trim() || null;
+  const row = {
+    workspace_id: state.wsId,
+    rep_id: currentUser().id,
+    day,
+    went_well: text(f.went_well.value),
+    improve: text(f.improve.value),
+    blockers: text(f.blockers.value),
+    energy: state.energy,
+  };
+  // Second sign-off on the same calendar day (e.g. two short shifts): add them up.
+  const prev = state.lastEod;
+  if (prev && prev.day === day) {
+    convos += prev.conversations || 0;
+    booked += prev.booked || 0;
+    totalDials += prev.dials || 0;
+    for (const k of ["went_well", "improve", "blockers"]) row[k] = row[k] || prev[k];
+  }
+  Object.assign(row, { conversations: convos, booked, dials: totalDials, updated_at: new Date().toISOString() });
+
   const btn = $("#eod-submit");
   btn.disabled = true;
   try {
-    await db.upsert(
-      "eods",
-      {
-        workspace_id: state.wsId,
-        rep_id: currentUser().id,
-        day: localDay(),
-        conversations: convos,
-        booked,
-        went_well: f.went_well.value.trim() || null,
-        improve: f.improve.value.trim() || null,
-        blockers: f.blockers.value.trim() || null,
-        energy: state.energy,
-        updated_at: new Date().toISOString(),
-      },
-      "workspace_id,rep_id,day"
-    );
-    message("#eod-msg", "Day signed off. Nice work 👋", true);
-    btn.textContent = "Update sign-off";
+    await db.upsert("eods", row, "workspace_id,rep_id,day");
+    await loadToday();       // new shift starts now: counters reset
+    await loadEod();
+    switchTab("log");
+    toast("Day closed 👋 Counters reset for your next shift");
   } catch (err) {
     message("#eod-msg", err.message);
   } finally {

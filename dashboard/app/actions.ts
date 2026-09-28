@@ -94,3 +94,19 @@ export async function renameWorkspace(form: FormData) {
   if (name) await supabase.from("workspaces").update({ name }).eq("id", ws);
   revalidatePath(`/w/${ws}`, "layout");
 }
+
+export async function updateTargets(form: FormData) {
+  const supabase = await createClient();
+  const ws = String(form.get("workspace_id"));
+  const num = (key: string) => {
+    const raw = String(form.get(key) ?? "").trim();
+    if (raw === "") return null; // empty = no target
+    const n = Math.round(Number(raw));
+    return Number.isFinite(n) && n >= 0 ? n : null;
+  };
+  await supabase
+    .from("workspaces")
+    .update({ min_dials: num("min_dials"), min_booked: num("min_booked") })
+    .eq("id", ws);
+  revalidatePath(`/w/${ws}`, "layout");
+}

@@ -8,6 +8,7 @@ import {
   setInviteActive,
   updateMember,
   updateOption,
+  updateTargets,
 } from "@/app/actions";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +24,7 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
   const { supabase, user } = await requireUser();
   if (!user) redirect("/login");
 
-  const { data: ws } = await supabase.from("workspaces").select("id,name").eq("id", id).single();
+  const { data: ws } = await supabase.from("workspaces").select("id,name,min_dials,min_booked").eq("id", id).single();
   if (!ws) notFound();
 
   const [{ data: invites }, { data: members }, { data: options }] = await Promise.all([
@@ -105,6 +106,24 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
               {hidden("workspace_id", id)}
               <input name="name" defaultValue={ws.name} maxLength={80} aria-label="Workspace name" />
               <button className="btn">Rename</button>
+            </form>
+
+            <h2 className="mt">Daily targets</h2>
+            <p className="muted small">
+              Checked in every rep&apos;s end-of-day sign-off. Reps enter their dials; booked is counted from their
+              logged calls. Leave a box empty to turn that target off.
+            </p>
+            <form action={updateTargets} className="targets-form">
+              {hidden("workspace_id", id)}
+              <label>
+                Minimum dials
+                <input name="min_dials" type="number" min={0} max={5000} defaultValue={ws.min_dials ?? ""} />
+              </label>
+              <label>
+                Minimum booked
+                <input name="min_booked" type="number" min={0} max={500} defaultValue={ws.min_booked ?? ""} />
+              </label>
+              <button className="btn">Save targets</button>
             </form>
 
             <h2 className="mt">Team</h2>
