@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Debrief</title>
+  <link rel="stylesheet" href="sidepanel.css" />
+</head>
+<body>
+  <!-- Auth -------------------------------------------------------------->
+  <section id="screen-auth" class="screen" hidden>
+    <div class="brand-hero">
+      <div class="logo">D</div>
+      <h1>Debrief</h1>
+      <p class="muted">Know why calls die.</p>
+    </div>
+    <form id="auth-form" class="stack">
+      <label id="name-field" hidden>
+        <span>Your name</span>
+        <input name="name" autocomplete="name" placeholder="Marco Rossi" />
+      </label>
+      <label>
+        <span>Email</span>
+        <input name="email" type="email" autocomplete="email" required />
+      </label>
+      <label>
+        <span>Password</span>
+        <input name="password" type="password" autocomplete="current-password" minlength="6" required />
+      </label>
+      <p id="auth-msg" class="msg" hidden></p>
+      <button class="btn primary" type="submit" id="auth-submit">Sign in</button>
+      <button class="btn link" type="button" id="auth-toggle">New here? Create an account</button>
+    </form>
+  </section>
+
+  <!-- Join workspace ---------------------------------------------------->
+  <section id="screen-join" class="screen" hidden>
+    <div class="brand-hero">
+      <div class="logo">D</div>
+      <h1>Join your team</h1>
+      <p class="muted">Enter the invite code your manager gave you.</p>
+    </div>
+    <form id="join-form" class="stack">
+      <input name="code" class="code-input" placeholder="ABCD2345" maxlength="12" autocomplete="off" required />
+      <p id="join-msg" class="msg" hidden></p>
+      <button class="btn primary" type="submit">Join</button>
+      <button class="btn link" type="button" id="join-back">Back</button>
+    </form>
+    <button class="btn link small signout">Sign out</button>
+  </section>
+
+  <!-- Main ---------------------------------------------------------------->
+  <section id="screen-main" class="screen" hidden>
+    <header class="topbar">
+      <div class="ws">
+        <div class="logo sm">D</div>
+        <select id="ws-select" aria-label="Workspace"></select>
+      </div>
+      <button class="icon-btn" id="menu-btn" aria-label="Menu">⋯</button>
+      <div id="menu" class="menu" hidden>
+        <button data-action="join">Join another team</button>
+        <button data-action="dashboard" id="menu-dashboard" hidden>Open dashboard</button>
+        <button data-action="signout">Sign out</button>
+      </div>
+    </header>
+
+    <div class="today">
+      <div class="stat"><b id="stat-convos">0</b><span>conversations</span></div>
+      <div class="stat good"><b id="stat-booked">0</b><span>booked</span></div>
+      <div class="stat"><b id="stat-rate">–</b><span>book rate</span></div>
+    </div>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="log">Log call</button>
+      <button class="tab" data-tab="eod">End of day</button>
+    </nav>
+
+    <!-- Log tab -->
+    <div id="tab-log" class="tab-body">
+      <div id="step-outcome" class="step">
+        <h2>How did it end?</h2>
+        <div id="outcomes" class="grid"></div>
+      </div>
+
+      <div id="step-stage" class="step" hidden>
+        <div class="step-head">
+          <h2>Where did it die?</h2>
+          <span class="pill" id="chosen-outcome"></span>
+        </div>
+        <div id="stages" class="list"></div>
+        <button class="btn ghost small" id="skip-stage">Skip <kbd>S</kbd></button>
+      </div>
+
+      <div id="step-objection" class="step" hidden>
+        <div class="step-head">
+          <h2>Objection?</h2>
+          <span class="pill" id="chosen-stage"></span>
+        </div>
+        <div id="objections" class="chips"></div>
+        <textarea id="note" rows="2" maxlength="500" placeholder="Note (optional)"></textarea>
+        <div class="row">
+          <button class="btn ghost" id="cancel-log">Cancel <kbd>Esc</kbd></button>
+          <button class="btn primary grow" id="save-log">Save <kbd>Enter</kbd></button>
+        </div>
+      </div>
+
+      <div class="recent">
+        <h3>Today</h3>
+        <ul id="recent-list"></ul>
+        <p id="recent-empty" class="muted small">No calls logged yet. Pick an outcome after each answered call.</p>
+      </div>
+    </div>
+
+    <!-- EOD tab -->
+    <div id="tab-eod" class="tab-body" hidden>
+      <div class="eod-summary" id="eod-summary"></div>
+      <form id="eod-form" class="stack">
+        <label>
+          <span>What worked well today?</span>
+          <textarea name="went_well" rows="3" maxlength="2000"></textarea>
+        </label>
+        <label>
+          <span>What should improve tomorrow?</span>
+          <textarea name="improve" rows="3" maxlength="2000"></textarea>
+        </label>
+        <label>
+          <span>Blockers? <em>(leads, tech, script…)</em></span>
+          <textarea name="blockers" rows="2" maxlength="2000"></textarea>
+        </label>
+        <fieldset class="energy">
+          <legend>Energy today</legend>
+          <div class="energy-row" id="energy-row"></div>
+        </fieldset>
+        <p id="eod-msg" class="msg" hidden></p>
+        <button class="btn primary" type="submit" id="eod-submit">Sign off the day</button>
+      </form>
+    </div>
+  </section>
+
+  <div id="toast" class="toast" hidden>
+    <span id="toast-text"></span>
+    <button id="toast-undo" class="btn link small" hidden>Undo</button>
+  </div>
+
+  <script type="module" src="sidepanel.js"></script>
+</body>
+</html>
