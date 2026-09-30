@@ -65,8 +65,12 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
           <section className="card">
             <h2>Invite codes</h2>
             <p className="muted small">
-              Reps enter a <b>rep code</b> in the Chrome extension. Managers enter a <b>manager code</b> here on the
-              dashboard. Turn a code off anytime.
+              Reps enter a <b>rep code</b> in the Chrome extension, or in the web logger at{" "}
+              <a href="/log" target="_blank" rel="noreferrer">
+                {host}/log
+              </a>{" "}
+              if they don&apos;t use Chrome. Managers enter a <b>manager code</b> here on the dashboard. Turn a code off
+              anytime.
             </p>
             <table className="table compact">
               <thead>

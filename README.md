@@ -81,6 +81,14 @@ client. The dashboard adds a client filter, a **By client** table and a **Rep ×
 A rep is **on target** when they hit the minimum dials **or** the minimum booked (default 500 dials or 5 booked).
 If they miss both, the sign-off asks what got in the way.
 
+## Reps who don't use Chrome
+- **Edge, Brave, Opera, Arc:** install the extension the same way (they run Chrome extensions).
+- **Safari, Firefox, phones:** use the web logger at **`<dashboard URL>/log`**. Same screens, same account, same data.
+  - Chrome/Edge: click the install icon in the address bar to open it as its own small app window.
+  - Safari (Mac): File → Add to Dock. iPhone: Share → Add to Home Screen.
+- The web logger is generated from the extension. After changing anything in `extension/`, run
+  `python3 scripts/build-web-logger.py` so both stay identical.
+
 ## Spreadsheets & Google Sheets
 Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheets & Google Sheets):
 - **Download CSV** for the Daily report, Rep × client by day, and the Call log (last 90 days).

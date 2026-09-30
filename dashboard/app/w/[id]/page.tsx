@@ -101,7 +101,8 @@ export default async function Dashboard({
           <section className="card">
             <h2>Managers only</h2>
             <p className="muted">
-              The dashboard is for managers. Reps log calls and sign off their day from the Debrief Chrome extension.
+              The dashboard is for managers. Reps log calls and sign off their day from the Debrief Chrome extension
+              or the <a href="/log">web logger</a>.
             </p>
           </section>
         </main>

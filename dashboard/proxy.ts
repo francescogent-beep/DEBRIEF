@@ -5,7 +5,9 @@ import { NextResponse, type NextRequest } from "next/server";
 // visitors on the login page.
 export async function proxy(request: NextRequest) {
   // /export/* is protected by its own secret key (Google Sheets can't sign in).
-  if (request.nextUrl.pathname.startsWith("/export/")) return NextResponse.next({ request });
+  // /log is the rep logger web page, which has its own sign-in.
+  const p = request.nextUrl.pathname;
+  if (p.startsWith("/export/") || p === "/log" || p.startsWith("/log/")) return NextResponse.next({ request });
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

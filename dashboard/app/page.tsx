@@ -62,7 +62,8 @@ export default async function Home() {
             </ul>
             {list.every((w) => w.role === "rep") && (
               <p className="muted small">
-                Reps log calls from the Debrief Chrome extension. The dashboard is for managers.
+                Reps log calls from the Debrief Chrome extension, or from the{" "}
+                <a href="/log">web logger</a> in any browser. The dashboard is for managers.
               </p>
             )}
           </section>
