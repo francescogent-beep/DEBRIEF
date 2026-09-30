@@ -48,12 +48,12 @@ export function DailyChart({
   return (
     <figure className="daily">
       <div className="legend">
-        <span><i className="sw conv" /> Conversations</span>
+        <span><i className="sw conv" /> Pick-ups</span>
         <span><i className="sw booked" /> Booked</span>
       </div>
-      <div className="daily-plot" role="img" aria-label="Conversations and booked appointments per day">
+      <div className="daily-plot" role="img" aria-label="Pick-ups and booked appointments per day">
         {days.map((d, idx) => (
-          <div className="daily-col" key={d.day} title={`${fmt(d.day)} — ${d.conversations} conversations, ${d.booked} booked`}>
+          <div className="daily-col" key={d.day} title={`${fmt(d.day)} — ${d.conversations} pick-ups, ${d.booked} booked`}>
             <div className="daily-bars">
               <span className="bar conv" style={{ height: `${(d.conversations / max) * 100}%` }} />
               <span className="bar booked" style={{ height: `${(d.booked / max) * 100}%` }} />

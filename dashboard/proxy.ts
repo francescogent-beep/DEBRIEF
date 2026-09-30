@@ -4,6 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 // Refreshes the Supabase session on every request and keeps signed-out
 // visitors on the login page.
 export async function proxy(request: NextRequest) {
+  // /export/* is protected by its own secret key (Google Sheets can't sign in).
+  if (request.nextUrl.pathname.startsWith("/export/")) return NextResponse.next({ request });
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(

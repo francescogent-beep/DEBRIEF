@@ -522,7 +522,7 @@ function renderEodSummary() {
     el(
       "dl",
       {},
-      el("dt", { textContent: "Conversations" }), el("dd", { textContent: convos }),
+      el("dt", { textContent: "Pick-ups" }), el("dd", { textContent: convos }),
       el("dt", { textContent: "Booked" }), el("dd", { textContent: booked }),
       el("dt", { textContent: "Most died at" }), el("dd", { textContent: top("stage_id") }),
       el("dt", { textContent: "Top objection" }), el("dd", { textContent: top("objection_id") }),
@@ -552,7 +552,7 @@ function perClientSummary() {
   if (by.size < 2) return [];
   return [...by.entries()].flatMap(([k, v]) => [
     el("dt", { textContent: k === NO_CLIENT ? "No client" : clientName(k) }),
-    el("dd", { textContent: `${v.c} convos · ${v.b} booked` }),
+    el("dd", { textContent: `${v.c} pick-ups · ${v.b} booked` }),
   ]);
 }
 

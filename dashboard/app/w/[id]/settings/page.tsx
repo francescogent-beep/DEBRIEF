@@ -1,9 +1,13 @@
+import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
+import { CopyButton } from "@/components/copy-button";
+import { EXPORTS } from "@/lib/exports";
 import { requireUser } from "@/lib/supabase-server";
 import { TopBar } from "@/components/topbar";
 import {
   addClient,
   addOption,
+  resetExportKey,
   createInvite,
   renameWorkspace,
   setInviteActive,
@@ -42,6 +46,13 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
 
   const { data: isManager } = await supabase.rpc("is_manager", { ws: id });
   if (!isManager || !invites) redirect(`/w/${id}`);
+
+  // Exports: secret key + absolute base URL for Google Sheets.
+  const { data: exportKey } = await supabase.rpc("get_export_key", { p_workspace: id });
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  const exportBase = exportKey ? `${proto}://${host}/export/${exportKey}` : null;
 
   const hidden = (name: string, value: string) => <input type="hidden" name={name} value={value} />;
 
@@ -172,6 +183,62 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
             )}
           </section>
         </div>
+
+        {/* Exports */}
+        <section className="card" id="export">
+          <h2>Spreadsheets &amp; Google Sheets</h2>
+          <p className="muted small">
+            Download a spreadsheet, or connect a Google Sheet that <b>updates itself automatically</b> (about once an
+            hour). Each covers the last 90 days.
+          </p>
+          {!exportBase ? (
+            <p className="msg">Couldn&apos;t create the export link. Refresh the page to try again.</p>
+          ) : (
+            <>
+              <ul className="export-list">
+                {EXPORTS.map((e) => {
+                  const url = `${exportBase}/${e.file}`;
+                  const formula = `=IMPORTDATA("${url}")`;
+                  return (
+                    <li key={e.kind}>
+                      <div className="export-head">
+                        <div>
+                          <b>{e.title}</b>
+                          <p className="muted small">{e.description}</p>
+                        </div>
+                        <a className="btn small" href={`${url}?download`} download={e.file}>
+                          ⬇ Download CSV
+                        </a>
+                      </div>
+                      <div className="formula">
+                        <code>{formula}</code>
+                        <CopyButton text={formula} label="Copy for Google Sheets" />
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
+              <details className="howto">
+                <summary>How to connect a Google Sheet</summary>
+                <ol>
+                  <li>Create a new Google Sheet (sheets.new). Add one tab per report if you want all three.</li>
+                  <li>Click <b>Copy for Google Sheets</b> next to a report above.</li>
+                  <li>Click cell <b>A1</b> in the tab and paste. The data appears in a few seconds.</li>
+                  <li>That&apos;s it: Google refreshes it about every hour. Build charts or other tabs on top of it.</li>
+                </ol>
+                <p className="muted small">
+                  Anyone with these links can see this team&apos;s reports, so only share the sheet with people who
+                  should. If a link leaks or someone leaves, reset it below; the old links and connected sheets stop
+                  working and you paste the new formula.
+                </p>
+              </details>
+              <form action={resetExportKey} className="reset-export">
+                {hidden("workspace_id", id)}
+                <button className="btn link small danger">Reset links (breaks connected sheets)</button>
+              </form>
+            </>
+          )}
+        </section>
 
         {/* Clients */}
         <section className="card">

@@ -140,3 +140,10 @@ export async function updateClient(form: FormData) {
   }
   revalidatePath(`/w/${ws}`, "layout");
 }
+
+export async function resetExportKey(form: FormData) {
+  const supabase = await createClient();
+  const ws = String(form.get("workspace_id"));
+  await supabase.rpc("get_export_key", { p_workspace: ws, p_reset: true });
+  revalidatePath(`/w/${ws}/settings`);
+}

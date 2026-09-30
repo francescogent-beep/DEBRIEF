@@ -186,6 +186,9 @@ export default async function Dashboard({
   return (
     <>
       <TopBar workspace={ws} active="dashboard">
+        <Link href={`/w/${id}/settings#export`} className="btn small export-btn">
+          ⬇ Export / Google Sheets
+        </Link>
         <nav className="range" aria-label="Time range">
           {RANGES.map((r) => (
             <Link key={r.key} href={qs({ range: r.key })} className={r.key === range ? "on" : ""}>
@@ -222,7 +225,7 @@ export default async function Dashboard({
             <b>{stats.totals.dials.toLocaleString()}</b>
           </div>
           <div className="kpi">
-            <span>Conversations</span>
+            <span>Pick-ups</span>
             <b>{conversations}</b>
           </div>
           <div className="kpi good">
@@ -305,7 +308,7 @@ export default async function Dashboard({
                   <tr>
                     <th>Client</th>
                     <th className="num">Dials</th>
-                    <th className="num">Conversations</th>
+                    <th className="num">Pick-ups</th>
                     <th className="num">Booked</th>
                     <th className="num">Book rate</th>
                     <th className="num">Reps</th>
@@ -354,7 +357,7 @@ export default async function Dashboard({
                       <th>Rep</th>
                       <th>Client</th>
                       <th className="num">Dials</th>
-                      <th className="num">Conversations</th>
+                      <th className="num">Pick-ups</th>
                       <th className="num">Booked</th>
                       <th className="num">Book rate</th>
                       <th>Most died at</th>
@@ -398,7 +401,7 @@ export default async function Dashboard({
                   <tr>
                     <th>Rep</th>
                     <th className="num">Dials</th>
-                    <th className="num">Conversations</th>
+                    <th className="num">Pick-ups</th>
                     <th className="num">Booked</th>
                     <th className="num">Book rate</th>
                     <th>Most died at</th>
@@ -487,7 +490,7 @@ export default async function Dashboard({
                             {hitDay(e) ? "✓ on target" : "✗ missed target"}
                           </span>
                         )}{" "}
-                        {e.dials ?? "?"} dials · {e.booked} booked · {e.conversations} convos
+                        {e.dials ?? "?"} dials · {e.booked} booked · {e.conversations} pick-ups
                       </span>
                       {e.energy && (
                         <span className="energy" title="Energy (1–5)">

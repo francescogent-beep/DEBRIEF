@@ -16,7 +16,7 @@ debrief/
 | Who | Where | What they do |
 |---|---|---|
 | **Rep** | Chrome extension side panel | Logs each answered call: outcome → where it died → objection (optional) → note (optional). Signs off the day. |
-| **Manager** | Dashboard | Sees their team: conversations, bookings, where calls die, top objections, per-rep breakdown, EOD sign-offs, blockers, call notes. Manages invite codes, team, and the option lists. |
+| **Manager** | Dashboard | Sees their team: dials, pick-ups, bookings, where calls die, top objections, per-rep breakdown, EOD sign-offs, blockers, call notes. Manages invite codes, team, and the option lists. |
 | **Owner (you)** | Dashboard | Everything a manager can do, across every workspace. Creates new workspaces (7FigureRia, course students, future clients). |
 
 **Privacy:** no lead data is ever stored — no names, phone numbers or asset amounts. Only outcomes, stages, objections and optional short notes.
@@ -80,6 +80,13 @@ client. The dashboard adds a client filter, a **By client** table and a **Rep ×
 ## Daily target
 A rep is **on target** when they hit the minimum dials **or** the minimum booked (default 500 dials or 5 booked).
 If they miss both, the sign-off asks what got in the way.
+
+## Spreadsheets & Google Sheets
+Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheets & Google Sheets):
+- **Download CSV** for the Daily report, Rep × client by day, and the Call log (last 90 days).
+- **Copy for Google Sheets** gives an `=IMPORTDATA("…")` formula. Paste it in cell A1 of a Google Sheet and it
+  refreshes itself about every hour.
+- The links contain a secret key. **Reset links** if one leaks; old links and connected sheets stop working.
 
 ## Roadmap
 - **v1.5 (course):** solo mode for students, self-serve workspace creation.
