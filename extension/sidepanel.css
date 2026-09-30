@@ -194,3 +194,31 @@ kbd {
   gap: 8px; font-weight: 600; box-shadow: 0 8px 24px rgba(0,0,0,.2); animation: in .14s ease-out;
 }
 .toast .btn.link { color: var(--accent-ink); text-decoration: underline; }
+.req { color: var(--bad); font-weight: 700; }
+
+/* Clients */
+.client-bar { display: flex; align-items: center; gap: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 6px 6px 12px; margin-bottom: 12px; }
+.client-bar label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); flex: none; }
+.client-bar select { border: none; background: transparent; font-weight: 700; padding: 6px; flex: 1; min-width: 0; }
+.client-bar.empty { border-color: var(--bad); }
+#client-needed { margin: -4px 0 12px; }
+.grid.locked { opacity: 0.4; pointer-events: none; }
+#recent-list .client { flex: none; font-size: 10px; font-weight: 700; color: var(--muted); border: 1px solid var(--line); border-radius: 99px; padding: 0 6px; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* EOD dials */
+.dials-box { display: flex; flex-direction: column; gap: 6px; }
+.dials-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; font-weight: 600; }
+.dials-fields { display: flex; flex-direction: column; gap: 6px; }
+.dial-row { display: flex; flex-direction: row; align-items: center; gap: 8px; font-weight: 500; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 4px 4px 4px 10px; }
+.dial-row.single { padding: 0; border: none; background: none; }
+.dial-row span { flex: 1; font-size: 13px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dial-row input { width: 96px; flex: none; text-align: right; padding: 6px 8px; }
+.dial-row.single input { width: 100%; text-align: left; }
+.dials-add { color: var(--muted); font-size: 12px; }
+.checks li.neutral .mark { color: var(--muted); border: 1px solid var(--line); }
+.checks-status { margin: 4px 0 6px !important; font-size: 13px; font-weight: 700; }
+.checks-status.ok { color: var(--good); }
+.checks-status.miss { color: var(--bad); }
+.checks-status.pending { color: var(--muted); font-weight: 500; }
+.checks li.or { justify-content: center; }
+.checks .or-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }

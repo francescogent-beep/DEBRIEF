@@ -201,3 +201,17 @@ a.ws-row:hover { border-color: var(--ink-2); }
 .kpis { grid-template-columns: repeat(6, 1fr); }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 600px) { .kpis { grid-template-columns: repeat(2, 1fr); } }
+
+/* Client filter & breakdowns */
+.client-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.client-filter .muted { margin-right: 4px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; font-size: 11px; }
+.client-filter a { text-decoration: none; font-size: 13px; font-weight: 600; color: var(--ink-2); background: var(--surface); border: 1px solid var(--line); border-radius: 99px; padding: 4px 12px; }
+.client-filter a:hover { border-color: var(--ink-2); }
+.client-filter a.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.filter-note { margin: -6px 0 0; font-size: 13px; color: var(--ink-2); }
+.row-link { text-decoration: none; }
+.row-link:hover b { text-decoration: underline; }
+.table tr.group-start td { border-top: 1px solid var(--line); }
+.table tr.muted-row td { color: var(--muted); }
+.tag.client-tag { color: var(--ink); background: var(--surface); font-weight: 700; }
+.clients-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 6px 16px; }

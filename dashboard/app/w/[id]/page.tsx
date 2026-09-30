@@ -22,10 +22,34 @@ type RepStat = {
   days_hit: number;
   stages: Record<string, number> | null;
 };
+type ClientStat = {
+  id: string | null;
+  name: string;
+  active: boolean;
+  conversations: number;
+  booked: number;
+  dials: number;
+  reps: number;
+  top_stage: string | null;
+  top_objection: string | null;
+};
+type RepClientStat = {
+  user_id: string;
+  rep_name: string | null;
+  client_id: string | null;
+  client_name: string;
+  conversations: number;
+  booked: number;
+  dials: number;
+  top_stage: string | null;
+  top_objection: string | null;
+};
 type Stats = {
   totals: { conversations: number; booked: number; active_reps: number; dials: number };
   targets: { min_dials: number | null; min_booked: number | null };
   reps: RepStat[];
+  clients: ClientStat[];
+  rep_clients: RepClientStat[];
   outcomes: Opt[];
   stages: Opt[];
   objections: Opt[];
@@ -37,13 +61,22 @@ export default async function Dashboard({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ range?: string }>;
+  searchParams: Promise<{ range?: string; client?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
   const range: RangeKey = (["today", "7d", "30d"] as const).includes(sp.range as RangeKey)
     ? (sp.range as RangeKey)
     : "7d";
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+  const clientFilter = sp.client && UUID.test(sp.client) ? sp.client : null;
+  const qs = (next: { range?: string; client?: string | null }) => {
+    const params = new URLSearchParams();
+    params.set("range", next.range ?? range);
+    const c = next.client === undefined ? clientFilter : next.client;
+    if (c) params.set("client", c);
+    return `?${params.toString()}`;
+  };
 
   const { supabase, user } = await requireUser();
   if (!user) redirect("/login");
@@ -57,6 +90,7 @@ export default async function Dashboard({
     p_from: win.from.toISOString(),
     p_to: win.to.toISOString(),
     p_tz: TEAM_TZ,
+    ...(clientFilter ? { p_client: clientFilter } : {}),
   });
 
   if (error) {
@@ -79,20 +113,22 @@ export default async function Dashboard({
   const [{ data: eods }, { data: notes }] = await Promise.all([
     supabase
       .from("eods")
-      .select("id,day,dials,conversations,booked,went_well,improve,blockers,energy,updated_at,rep:profiles(full_name,email)")
+      .select("id,day,dials,dials_by_client,conversations,booked,went_well,improve,blockers,energy,updated_at,rep:profiles(full_name,email)")
       .eq("workspace_id", id)
       .gte("day", win.fromDay)
       .order("day", { ascending: false })
       .order("updated_at", { ascending: false })
       .limit(60),
-    supabase
-      .from("call_logs")
-      .select("id,note,created_at,outcome_id,stage_id,objection_id,rep:profiles(full_name,email)")
-      .eq("workspace_id", id)
-      .not("note", "is", null)
-      .gte("created_at", win.from.toISOString())
-      .order("created_at", { ascending: false })
-      .limit(30),
+    (() => {
+      let q = supabase
+        .from("call_logs")
+        .select("id,note,created_at,outcome_id,stage_id,objection_id,client_id,rep:profiles(full_name,email)")
+        .eq("workspace_id", id)
+        .not("note", "is", null)
+        .gte("created_at", win.from.toISOString());
+      if (clientFilter) q = q.eq("client_id", clientFilter);
+      return q.order("created_at", { ascending: false }).limit(30);
+    })(),
   ]);
 
   const labels = new Map<string, Opt>();
@@ -112,7 +148,11 @@ export default async function Dashboard({
   const hasTargets = t.min_dials != null || t.min_booked != null;
   const dialsOk = (d: number | null) => t.min_dials == null || (d ?? 0) >= t.min_dials;
   const bookedOk = (b: number) => t.min_booked == null || b >= t.min_booked;
-  const hitDay = (e: { dials: number | null; booked: number }) => dialsOk(e.dials) && bookedOk(e.booked);
+  // On target = min dials OR min booked (whichever targets are set).
+  const hitDay = (e: { dials: number | null; booked: number }) =>
+    !hasTargets ||
+    (t.min_dials != null && (e.dials ?? 0) >= t.min_dials) ||
+    (t.min_booked != null && e.booked >= t.min_booked);
   const eodsHitToday = (eods ?? []).filter((e) => e.day === today && hitDay(e)).length;
   const eodsHitRange = (eods ?? []).filter(hitDay).length;
 
@@ -129,12 +169,26 @@ export default async function Dashboard({
   const name = (r: { full_name?: string | null; email?: string | null } | null) =>
     r?.full_name || r?.email?.split("@")[0] || "Someone";
 
+  // Clients
+  const clientList = stats.clients ?? [];
+  const realClients = clientList.filter((c) => c.id);
+  const clientNames = new Map(realClients.map((c) => [c.id as string, c.name]));
+  const hasClients = realClients.length > 0;
+  const activeClient = clientFilter ? clientNames.get(clientFilter) ?? "Client" : null;
+  const repClients = stats.rep_clients ?? [];
+  const targetText = [
+    t.min_dials != null ? `${t.min_dials} dials` : null,
+    t.min_booked != null ? `${t.min_booked} booked` : null,
+  ]
+    .filter(Boolean)
+    .join(" or ");
+
   return (
     <>
       <TopBar workspace={ws} active="dashboard">
         <nav className="range" aria-label="Time range">
           {RANGES.map((r) => (
-            <Link key={r.key} href={`?range=${r.key}`} className={r.key === range ? "on" : ""}>
+            <Link key={r.key} href={qs({ range: r.key })} className={r.key === range ? "on" : ""}>
               {r.label}
             </Link>
           ))}
@@ -142,6 +196,25 @@ export default async function Dashboard({
       </TopBar>
 
       <main className="page">
+        {hasClients && (
+          <nav className="client-filter" aria-label="Filter by client">
+            <span className="muted small">Client</span>
+            <Link href={qs({ client: null })} className={!clientFilter ? "on" : ""}>
+              All clients
+            </Link>
+            {realClients.map((c) => (
+              <Link key={c.id} href={qs({ client: c.id })} className={clientFilter === c.id ? "on" : ""}>
+                {c.name}
+              </Link>
+            ))}
+          </nav>
+        )}
+        {activeClient && (
+          <p className="filter-note">
+            Showing <b>{activeClient}</b> only. Targets and end-of-day sign-offs are per rep across all clients.
+          </p>
+        )}
+
         {/* KPIs */}
         <section className="kpis">
           <div className="kpi">
@@ -161,7 +234,9 @@ export default async function Dashboard({
             <b>{pct(booked, conversations)}</b>
           </div>
           <div className="kpi">
-            <span>{range === "today" ? "Hit targets today" : "Days on target"}</span>
+            <span title={targetText ? `On target = ${targetText}` : undefined}>
+              {range === "today" ? "On target today" : "Days on target"}
+            </span>
             <b>
               {hasTargets ? (range === "today" ? eodsHitToday : eodsHitRange) : "–"}
               {hasTargets && <small>/{range === "today" ? repCount : eods?.length ?? 0}</small>}
@@ -216,6 +291,96 @@ export default async function Dashboard({
           <section className="card">
             <h2>Daily trend</h2>
             <DailyChart days={days} />
+          </section>
+        )}
+
+        {/* By client */}
+        {hasClients && !clientFilter && (
+          <section className="card">
+            <h2>By client</h2>
+            <p className="muted small">Results for each firm your reps call for. Click a client to filter the whole dashboard.</p>
+            <div className="table-wrap">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th className="num">Dials</th>
+                    <th className="num">Conversations</th>
+                    <th className="num">Booked</th>
+                    <th className="num">Book rate</th>
+                    <th className="num">Reps</th>
+                    <th>Most died at</th>
+                    <th>Top objection</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clientList.map((c) => (
+                    <tr key={c.id ?? "none"} className={c.id ? "" : "muted-row"}>
+                      <td>
+                        {c.id ? (
+                          <Link href={qs({ client: c.id })} className="row-link">
+                            <b>{c.name}</b>
+                          </Link>
+                        ) : (
+                          <span className="muted">{c.name}</span>
+                        )}
+                      </td>
+                      <td className="num">{c.dials ? c.dials.toLocaleString() : "—"}</td>
+                      <td className="num">{c.conversations}</td>
+                      <td className="num good-text">{c.booked}</td>
+                      <td className="num">{pct(c.booked, c.conversations)}</td>
+                      <td className="num">{c.reps}</td>
+                      <td>{c.top_stage ?? <span className="muted">—</span>}</td>
+                      <td>{c.top_objection ?? <span className="muted">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
+
+        {hasClients && (
+          <section className="card">
+            <h2>Rep × client{activeClient ? ` — ${activeClient}` : ""}</h2>
+            <p className="muted small">How each rep performs for each client they called for.</p>
+            {repClients.length === 0 ? (
+              <p className="muted small empty">No calls logged in this period.</p>
+            ) : (
+              <div className="table-wrap">
+                <table className="table">
+                  <thead>
+                    <tr>
+                      <th>Rep</th>
+                      <th>Client</th>
+                      <th className="num">Dials</th>
+                      <th className="num">Conversations</th>
+                      <th className="num">Booked</th>
+                      <th className="num">Book rate</th>
+                      <th>Most died at</th>
+                      <th>Top objection</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {repClients.map((rc, i) => {
+                      const firstOfRep = i === 0 || repClients[i - 1].user_id !== rc.user_id;
+                      return (
+                        <tr key={`${rc.user_id}-${rc.client_id ?? "none"}`} className={firstOfRep ? "group-start" : ""}>
+                          <td>{firstOfRep ? <b>{rc.rep_name || "Someone"}</b> : ""}</td>
+                          <td className={rc.client_id ? "" : "muted"}>{rc.client_name}</td>
+                          <td className="num">{rc.dials ? rc.dials.toLocaleString() : "—"}</td>
+                          <td className="num">{rc.conversations}</td>
+                          <td className="num good-text">{rc.booked}</td>
+                          <td className="num">{pct(rc.booked, rc.conversations)}</td>
+                          <td>{rc.top_stage ?? <span className="muted">—</span>}</td>
+                          <td>{rc.top_objection ?? <span className="muted">—</span>}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </section>
         )}
 
@@ -317,15 +482,12 @@ export default async function Dashboard({
                         })}
                       </span>
                       <span className="eod-stats">
-                        {t.min_dials != null || e.dials != null ? (
-                          <span className={`hit ${dialsOk(e.dials) ? "ok" : "miss"}`}>
-                            {dialsOk(e.dials) ? "✓" : "✗"} {e.dials ?? "?"} dials
+                        {hasTargets && (
+                          <span className={`hit ${hitDay(e) ? "ok" : "miss"}`} title={`On target = ${targetText}`}>
+                            {hitDay(e) ? "✓ on target" : "✗ missed target"}
                           </span>
-                        ) : null}{" "}
-                        <span className={`hit ${bookedOk(e.booked) ? "ok" : "miss"}`}>
-                          {bookedOk(e.booked) ? "✓" : "✗"} {e.booked} booked
-                        </span>{" "}
-                        · {e.conversations} convos
+                        )}{" "}
+                        {e.dials ?? "?"} dials · {e.booked} booked · {e.conversations} convos
                       </span>
                       {e.energy && (
                         <span className="energy" title="Energy (1–5)">
@@ -333,6 +495,14 @@ export default async function Dashboard({
                         </span>
                       )}
                     </div>
+                    {hasClients && e.dials_by_client && Object.keys(e.dials_by_client).length > 1 && (
+                      <p className="small muted">
+                        Dials:{" "}
+                        {Object.entries(e.dials_by_client as Record<string, number>)
+                          .map(([k, v]) => `${clientNames.get(k) ?? "No client"} ${v}`)
+                          .join(" · ")}
+                      </p>
+                    )}
                     {e.went_well && (
                       <p>
                         <span className="lbl good-text">Worked</span> {e.went_well}
@@ -368,6 +538,9 @@ export default async function Dashboard({
                       <span className="muted small">{relativeTime(n.created_at)}</span>
                     </div>
                     <p className="note-tags">
+                      {n.client_id && clientNames.get(n.client_id) && (
+                        <span className="tag client-tag">{clientNames.get(n.client_id)}</span>
+                      )}
                       {[n.outcome_id, n.stage_id, n.objection_id]
                         .map((x) => (x ? labels.get(x)?.label : null))
                         .filter(Boolean)

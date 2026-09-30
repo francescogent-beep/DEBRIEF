@@ -72,6 +72,15 @@ debrief/
 
 Managers can rename, hide or add any of these under **Team & settings**. Hidden options keep their history.
 
+## Clients (sub-accounts)
+Managers add the firms reps call for under **Team & settings → Clients**. In the extension, reps pick
+**Calling for** before logging; every call is tagged with that client. At end of day they split their dials per
+client. The dashboard adds a client filter, a **By client** table and a **Rep × client** report.
+
+## Daily target
+A rep is **on target** when they hit the minimum dials **or** the minimum booked (default 500 dials or 5 booked).
+If they miss both, the sign-off asks what got in the way.
+
 ## Roadmap
 - **v1.5 (course):** solo mode for students, self-serve workspace creation.
 - **v2 (sell):** Stripe billing, AI weekly digest of EOD notes, GHL/WAVV webhook to auto-count dials (connect rate).

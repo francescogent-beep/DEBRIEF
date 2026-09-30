@@ -17,7 +17,13 @@ const state = {
   step: "outcome",       // outcome | stage | objection
   energy: null,
   authMode: "signin",
+  clients: [],           // active clients (sub-accounts) in this workspace
+  clientId: null,        // who the rep is calling for right now
+  dialClients: [],       // client ids shown in the EOD dials section
+  manualDials: new Set(), // clients the rep added to the dials section by hand
 };
+const CLIENT_KEY = (ws) => `debrief.client.${ws}`;
+const NO_CLIENT = "none";
 
 const $ = (sel) => document.querySelector(sel);
 const el = (tag, props = {}, ...children) => {
@@ -117,10 +123,49 @@ async function loadWorkspace() {
     state.options[o.kind].push(o);
     state.byId.set(o.id, o);
   }
+  state.clients = await db.select(
+    "clients",
+    `select=id,name,sort&workspace_id=eq.${state.wsId}&active=eq.true&order=sort.asc,name.asc`
+  );
+  const savedClient = (await chrome.storage.local.get(CLIENT_KEY(state.wsId)))[CLIENT_KEY(state.wsId)];
+  state.clientId = state.clients.some((c) => c.id === savedClient) ? savedClient : null;
+  renderClientBar();
   resetDraft();
   await flushQueue();
   await loadToday();
   await loadEod();
+}
+
+// ---------------------------------------------------------------------------
+// Clients: who the rep is calling for. Required when the workspace has any.
+// ---------------------------------------------------------------------------
+const clientName = (id) => state.clients.find((c) => c.id === id)?.name || (id ? "Other client" : "No client");
+const needsClient = () => state.clients.length > 0 && !state.clientId;
+
+function renderClientBar() {
+  const bar = $("#client-bar");
+  bar.hidden = state.clients.length === 0;
+  const sel = $("#client-select");
+  sel.replaceChildren(
+    el("option", { value: "", textContent: "Choose client…", disabled: true, selected: !state.clientId }),
+    ...state.clients.map((c) => el("option", { value: c.id, textContent: c.name, selected: c.id === state.clientId }))
+  );
+  bar.classList.toggle("empty", needsClient());
+  $("#outcomes").classList.toggle("locked", needsClient());
+  $("#client-needed").hidden = true;
+}
+
+$("#client-select").addEventListener("change", async (e) => {
+  state.clientId = e.target.value || null;
+  e.target.blur(); // give the keyboard back to the 1–9 shortcuts
+  await chrome.storage.local.set({ [CLIENT_KEY(state.wsId)]: state.clientId });
+  renderClientBar();
+  toast(`Calling for ${clientName(state.clientId)}`);
+});
+
+function promptClient() {
+  $("#client-needed").hidden = false;
+  $("#client-select").focus();
 }
 
 // ---------------------------------------------------------------------------
@@ -217,7 +262,15 @@ function switchTab(name) {
   for (const t of document.querySelectorAll(".tab")) t.classList.toggle("active", t.dataset.tab === name);
   $("#tab-log").hidden = name !== "log";
   $("#tab-eod").hidden = name !== "eod";
-  if (name === "eod") renderEodSummary();
+  if (name === "eod") {
+    // Rebuild the dials boxes from the clients actually worked this shift,
+    // keeping any box the rep added by hand or already typed into.
+    const typed = readDials().byClient;
+    const keep = state.dialClients.filter((id) => state.manualDials.has(id) || typed[id] != null);
+    state.dialClients = [...new Set([...defaultDialClients(), ...keep])];
+    renderDials();
+    renderEodSummary();
+  }
 }
 for (const t of document.querySelectorAll(".tab")) t.addEventListener("click", () => switchTab(t.dataset.tab));
 
@@ -257,6 +310,7 @@ function renderOutcomes() {
 }
 
 function chooseOutcome(o) {
+  if (needsClient()) return promptClient();
   state.draft.outcome = o;
   if (o.is_success) return saveLog();          // Booked = one click.
   $("#chosen-outcome").textContent = o.label;
@@ -303,6 +357,7 @@ async function saveLog() {
     stage_id: d.stage?.id || null,
     objection_id: d.objection?.id || null,
     note: d.note.trim() || null,
+    client_id: state.clientId || null,
     created_at: new Date().toISOString(),
   };
   resetDraft();
@@ -387,13 +442,13 @@ async function loadToday() {
   const me = currentUser().id;
   const [last] = await db.select(
     "eods",
-    `select=day,dials,booked,conversations,went_well,improve,blockers,energy,updated_at` +
+    `select=day,dials,dials_by_client,booked,conversations,went_well,improve,blockers,energy,updated_at` +
       `&workspace_id=eq.${state.wsId}&rep_id=eq.${me}&order=updated_at.desc&limit=1`
   );
   state.lastEod = last || null;
   state.logs = await db.select(
     "call_logs",
-    `select=id,outcome_id,stage_id,objection_id,note,created_at&workspace_id=eq.${state.wsId}` +
+    `select=id,outcome_id,stage_id,objection_id,client_id,note,created_at&workspace_id=eq.${state.wsId}` +
       `&rep_id=eq.${me}&created_at=gt.${encodeURIComponent(shiftStart().toISOString())}` +
       `&order=created_at.desc&limit=1000`
   );
@@ -433,6 +488,9 @@ function renderToday() {
           bits.length ? ` · ${bits.join(" · ")}` : ""
         )
       );
+      if (state.clients.length > 1 && l.client_id) {
+        li.insertBefore(el("span", { className: "client", textContent: clientName(l.client_id), title: clientName(l.client_id) }), li.children[1]);
+      }
       if (l.pending) li.append(el("span", { className: "pending", textContent: "saving…" }));
       else if (new Date(l.created_at).getTime() > editableSince) {
         const del = el("button", { className: "del", title: "Remove", textContent: "×" });
@@ -467,7 +525,8 @@ function renderEodSummary() {
       el("dt", { textContent: "Conversations" }), el("dd", { textContent: convos }),
       el("dt", { textContent: "Booked" }), el("dd", { textContent: booked }),
       el("dt", { textContent: "Most died at" }), el("dd", { textContent: top("stage_id") }),
-      el("dt", { textContent: "Top objection" }), el("dd", { textContent: top("objection_id") })
+      el("dt", { textContent: "Top objection" }), el("dd", { textContent: top("objection_id") }),
+      ...perClientSummary()
     )
   );
   const last = state.lastEod;
@@ -480,40 +539,118 @@ function renderEodSummary() {
   renderChecks();
 }
 
-// Returns { rows, missed } for the target checklist.
+function perClientSummary() {
+  if (state.clients.length === 0) return [];
+  const by = new Map();
+  for (const l of state.logs) {
+    const k = l.client_id || NO_CLIENT;
+    const v = by.get(k) || { c: 0, b: 0 };
+    v.c++;
+    if (state.byId.get(l.outcome_id)?.is_success) v.b++;
+    by.set(k, v);
+  }
+  if (by.size < 2) return [];
+  return [...by.entries()].flatMap(([k, v]) => [
+    el("dt", { textContent: k === NO_CLIENT ? "No client" : clientName(k) }),
+    el("dd", { textContent: `${v.c} convos · ${v.b} booked` }),
+  ]);
+}
+
+// ---- Dials: one box per client worked this shift (or a single box) --------
+function defaultDialClients() {
+  if (state.clients.length === 0) return [NO_CLIENT];
+  const ids = [];
+  for (const l of [...state.logs].reverse()) if (l.client_id && !ids.includes(l.client_id)) ids.push(l.client_id);
+  if (state.clientId && !ids.includes(state.clientId)) ids.push(state.clientId);
+  return ids.length ? ids : [state.clients[0].id];
+}
+
+function renderDials(keepValues = true) {
+  const prev = keepValues ? readDials().byClient : {};
+  const single = state.dialClients.length === 1 && state.dialClients[0] === NO_CLIENT;
+  $("#dials-fields").replaceChildren(
+    ...state.dialClients.map((id) => {
+      const input = el("input", {
+        type: "number", inputMode: "numeric", min: 0, max: 5000,
+        placeholder: single ? "From WAVV, e.g. 512" : "0",
+        value: prev[id] ?? "",
+      });
+      input.dataset.client = id;
+      input.addEventListener("input", renderChecks);
+      return el("label", { className: `dial-row${single ? " single" : ""}` },
+        single ? "" : el("span", { textContent: clientName(id) }), input);
+    })
+  );
+  const rest = state.clients.filter((c) => !state.dialClients.includes(c.id));
+  const add = $("#dials-add");
+  add.hidden = single || rest.length === 0;
+  add.replaceChildren(
+    el("option", { value: "", textContent: "+ Dialed for another client", selected: true }),
+    ...rest.map((c) => el("option", { value: c.id, textContent: c.name }))
+  );
+}
+
+$("#dials-add").addEventListener("change", (e) => {
+  if (!e.target.value) return;
+  state.dialClients.push(e.target.value);
+  state.manualDials.add(e.target.value);
+  renderDials();
+  $(`#dials-fields input[data-client="${e.target.value}"]`)?.focus();
+});
+
+// { total, byClient } — total is null until the rep types at least one number.
+function readDials() {
+  const byClient = {};
+  let total = null;
+  for (const input of document.querySelectorAll("#dials-fields input")) {
+    if (input.value === "") continue;
+    const n = Math.max(0, Math.round(Number(input.value)) || 0);
+    byClient[input.dataset.client] = n;
+    total = (total ?? 0) + n;
+  }
+  return { total, byClient };
+}
+
+// Daily target = min dials OR min booked (either one is enough).
 function targetChecks() {
   const t = state.targets || {};
-  const dialsRaw = $("#eod-form").dials.value;
-  const dials = dialsRaw === "" ? null : Number(dialsRaw);
+  const { total: dials } = readDials();
   const { booked } = counts();
+  const hasD = t.min_dials != null, hasB = t.min_booked != null;
+  const dialsOk = hasD && dials != null && dials >= t.min_dials;
+  const bookedOk = hasB && booked >= t.min_booked;
+  const hit = (!hasD && !hasB) || dialsOk || bookedOk;
+  const pending = !hit && dials == null;
   const rows = [];
-  if (t.min_dials != null) {
-    rows.push({ label: `${t.min_dials} dials`, value: dials == null ? "—" : dials, ok: dials != null && dials >= t.min_dials, pending: dials == null });
-  }
-  if (t.min_booked != null) {
-    rows.push({ label: `${t.min_booked} booked`, value: booked, ok: booked >= t.min_booked, pending: false });
-  }
-  return { rows, missed: rows.some((r) => !r.ok && !r.pending), dials };
+  if (hasD) rows.push({ label: `${t.min_dials} dials`, value: dials ?? "—",
+    cls: dialsOk ? "ok" : dials == null ? "pending" : hit ? "neutral" : "miss" });
+  if (hasB) rows.push({ label: `${t.min_booked} booked`, value: booked,
+    cls: bookedOk ? "ok" : hit || pending ? "neutral" : "miss" });
+  return { rows, hit, pending, missed: !hit && !pending, dials, hasTargets: hasD || hasB };
 }
 
 function renderChecks() {
-  const { rows, missed } = targetChecks();
-  $("#eod-checks").hidden = rows.length === 0;
+  const { rows, hit, pending, missed, dials, hasTargets } = targetChecks();
+  $("#eod-checks").hidden = !hasTargets;
+  $("#checks-title").textContent = rows.length > 1 ? "Daily target — hit either one" : "Daily target";
   $("#eod-checks-list").replaceChildren(
-    ...rows.map((r) =>
-      el(
-        "li",
-        { className: r.pending ? "pending" : r.ok ? "ok" : "miss" },
-        el("span", { className: "mark", textContent: r.pending ? "○" : r.ok ? "✓" : "✗" }),
-        el("span", { className: "lbl", textContent: `Minimum ${r.label}` }),
-        el("b", { textContent: r.value })
-      )
-    )
+    ...rows.map((r, i) => [
+      i > 0 ? el("li", { className: "or" }, el("span", { className: "or-lbl", textContent: "or" })) : null,
+      el("li", { className: r.cls },
+        el("span", { className: "mark", textContent: r.cls === "ok" ? "✓" : r.cls === "miss" ? "✗" : "○" }),
+        el("span", { className: "lbl", textContent: `${r.label}` }),
+        el("b", { textContent: r.value })),
+    ]).flat().filter(Boolean)
   );
+  const status = $("#checks-status");
+  status.className = `checks-status ${hit ? "ok" : pending ? "pending" : "miss"}`;
+  status.textContent = hit ? "✓ Daily target hit" : pending ? "Enter your dials to check your target" : "✗ Daily target missed";
+  const multi = document.querySelectorAll("#dials-fields input").length > 1;
+  $("#dials-total").hidden = !multi;
+  $("#dials-total").textContent = `Total: ${dials ?? 0}`;
   // A missed target needs a reason.
-  const blockers = $("#eod-form").blockers;
-  blockers.required = missed;
-  $("#blockers-label").textContent = missed ? "Missed a target — what got in the way?" : "Blockers?";
+  $("#eod-form").blockers.required = missed;
+  $("#blockers-label").textContent = missed ? "Missed your target — what got in the way?" : "Blockers?";
   $("#blockers-hint").hidden = missed;
 }
 
@@ -530,24 +667,42 @@ function renderEnergy() {
 
 async function loadEod() {
   $("#eod-form").reset();
+  state.dialClients = defaultDialClients();
+  state.manualDials = new Set();
+  renderDials(false);
   state.energy = null;
   message("#eod-msg", "");
   renderEnergy();
   renderEodSummary();
 }
 
-$("#eod-form").dials.addEventListener("input", renderChecks);
 
 $("#eod-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const f = e.target;
   const { missed, dials } = targetChecks();
-  if (dials == null) return message("#eod-msg", "Enter how many dials you made today.");
+  if (dials == null) {
+    document.querySelector("#dials-fields input")?.focus();
+    return message("#eod-msg", "Enter how many dials you made today.");
+  }
+  const MIN_TEXT = 15;
+  if (f.went_well.value.trim().length < MIN_TEXT) {
+    f.went_well.focus();
+    return message("#eod-msg", "Tell us how the day went — at least a short sentence.");
+  }
+  if (f.improve.value.trim().length < MIN_TEXT) {
+    f.improve.focus();
+    return message("#eod-msg", "Add what you'll improve tomorrow — at least a short sentence.");
+  }
+  if (missed && f.blockers.value.trim().length < MIN_TEXT) {
+    f.blockers.focus();
+    return message("#eod-msg", "You missed a target — explain what got in the way (at least a short sentence).");
+  }
   if (!state.energy) return message("#eod-msg", "Pick your energy level (1–5).");
-  if (missed && !f.blockers.value.trim()) return message("#eod-msg", "You missed a target — add a quick note on what got in the way.");
 
   let { convos, booked } = counts();
   let totalDials = dials;
+  const byClient = { ...readDials().byClient };
   const day = shiftDay();
   const text = (v) => v.trim() || null;
   const row = {
@@ -565,9 +720,15 @@ $("#eod-form").addEventListener("submit", async (e) => {
     convos += prev.conversations || 0;
     booked += prev.booked || 0;
     totalDials += prev.dials || 0;
+    const prevBy = prev.dials_by_client || (prev.dials ? { [NO_CLIENT]: prev.dials } : {});
+    for (const [k, v] of Object.entries(prevBy)) byClient[k] = (byClient[k] || 0) + (Number(v) || 0);
     for (const k of ["went_well", "improve", "blockers"]) row[k] = row[k] || prev[k];
   }
-  Object.assign(row, { conversations: convos, booked, dials: totalDials, updated_at: new Date().toISOString() });
+  Object.assign(row, {
+    conversations: convos, booked, dials: totalDials,
+    dials_by_client: state.clients.length ? byClient : null,
+    updated_at: new Date().toISOString(),
+  });
 
   const btn = $("#eod-submit");
   btn.disabled = true;
@@ -599,6 +760,7 @@ document.addEventListener("keydown", (e) => {
   if (typing) return;
 
   const n = Number(e.key);
+  if (n >= 1 && n <= 9 && state.step === "outcome" && needsClient()) return promptClient();
   if (n >= 1 && n <= 9) {
     if (state.step === "outcome" && state.orderedOutcomes?.[n - 1]) chooseOutcome(state.orderedOutcomes[n - 1]);
     else if (state.step === "stage" && state.options.stage[n - 1]) chooseStage(state.options.stage[n - 1]);

@@ -110,3 +110,33 @@ export async function updateTargets(form: FormData) {
     .eq("id", ws);
   revalidatePath(`/w/${ws}`, "layout");
 }
+
+export async function addClient(form: FormData) {
+  const supabase = await createClient();
+  const ws = String(form.get("workspace_id"));
+  const name = String(form.get("name") || "").trim();
+  if (!name) return;
+  const { data: last } = await supabase
+    .from("clients")
+    .select("sort")
+    .eq("workspace_id", ws)
+    .order("sort", { ascending: false })
+    .limit(1);
+  await supabase.from("clients").insert({ workspace_id: ws, name, sort: (last?.[0]?.sort ?? 0) + 1 });
+  revalidatePath(`/w/${ws}`, "layout");
+}
+
+export async function updateClient(form: FormData) {
+  const supabase = await createClient();
+  const ws = String(form.get("workspace_id"));
+  const patch: Record<string, unknown> = {};
+  if (form.has("name")) {
+    const name = String(form.get("name")).trim();
+    if (name) patch.name = name;
+  }
+  if (form.has("active")) patch.active = form.get("active") === "true";
+  if (Object.keys(patch).length) {
+    await supabase.from("clients").update(patch).eq("id", String(form.get("id"))).eq("workspace_id", ws);
+  }
+  revalidatePath(`/w/${ws}`, "layout");
+}

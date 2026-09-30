@@ -2,12 +2,14 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase-server";
 import { TopBar } from "@/components/topbar";
 import {
+  addClient,
   addOption,
   createInvite,
   renameWorkspace,
   setInviteActive,
   updateMember,
   updateOption,
+  updateClient,
   updateTargets,
 } from "@/app/actions";
 
@@ -27,7 +29,7 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
   const { data: ws } = await supabase.from("workspaces").select("id,name,min_dials,min_booked").eq("id", id).single();
   if (!ws) notFound();
 
-  const [{ data: invites }, { data: members }, { data: options }] = await Promise.all([
+  const [{ data: invites }, { data: members }, { data: options }, { data: clients }] = await Promise.all([
     supabase.from("invites").select("*").eq("workspace_id", id).order("created_at", { ascending: false }),
     supabase
       .from("memberships")
@@ -35,6 +37,7 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
       .eq("workspace_id", id)
       .order("created_at"),
     supabase.from("options").select("*").eq("workspace_id", id).order("sort"),
+    supabase.from("clients").select("*").eq("workspace_id", id).order("sort").order("name"),
   ]);
 
   const { data: isManager } = await supabase.rpc("is_manager", { ws: id });
@@ -110,8 +113,9 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
 
             <h2 className="mt">Daily targets</h2>
             <p className="muted small">
-              Checked in every rep&apos;s end-of-day sign-off. Reps enter their dials; booked is counted from their
-              logged calls. Leave a box empty to turn that target off.
+              Checked in every rep&apos;s end-of-day sign-off. A rep is <b>on target</b> when they hit the dials
+              minimum <b>or</b> the booked minimum. Reps enter their dials; booked is counted from their logged calls.
+              Leave a box empty to turn that target off.
             </p>
             <form action={updateTargets} className="targets-form">
               {hidden("workspace_id", id)}
@@ -168,6 +172,39 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
             )}
           </section>
         </div>
+
+        {/* Clients */}
+        <section className="card">
+          <h2>Clients</h2>
+          <p className="muted small">
+            The firms your reps call for. Reps pick one in the extension (&ldquo;Calling for&rdquo;) and every call is
+            tagged with it, so the dashboard can break results down by client and by rep × client. Hidden clients
+            disappear from the extension but keep their history.
+          </p>
+          <ul className="opt-list clients-list">
+            {(clients ?? []).map((c) => (
+              <li key={c.id} className={c.active ? "" : "off"}>
+                <form action={updateClient} className="row">
+                  {hidden("workspace_id", id)}
+                  {hidden("id", c.id)}
+                  <input name="name" defaultValue={c.name} maxLength={80} aria-label="Client name" />
+                  <button className="btn small">Save</button>
+                </form>
+                <form action={updateClient}>
+                  {hidden("workspace_id", id)}
+                  {hidden("id", c.id)}
+                  {hidden("active", String(!c.active))}
+                  <button className="btn link small">{c.active ? "Hide" : "Show"}</button>
+                </form>
+              </li>
+            ))}
+          </ul>
+          <form action={addClient} className="row">
+            {hidden("workspace_id", id)}
+            <input name="name" placeholder="Add client, e.g. Alcaton Advisors" maxLength={80} required />
+            <button className="btn small">Add client</button>
+          </form>
+        </section>
 
         {/* Options */}
         <div className="grid-3 align-start">

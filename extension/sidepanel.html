@@ -77,6 +77,11 @@
 
     <!-- Log tab -->
     <div id="tab-log" class="tab-body">
+      <div id="client-bar" class="client-bar" hidden>
+        <label for="client-select">Calling for</label>
+        <select id="client-select"></select>
+      </div>
+      <p id="client-needed" class="msg" hidden>Pick who you're calling for first ↑</p>
       <div id="step-outcome" class="step">
         <h2>How did it end?</h2>
         <div id="outcomes" class="grid"></div>
@@ -116,22 +121,27 @@
       <p id="eod-last" class="muted small eod-last" hidden></p>
       <div class="eod-summary" id="eod-summary"></div>
       <form id="eod-form" class="stack" novalidate>
-        <label>
-          <span>Dials today</span>
-          <input name="dials" type="number" inputmode="numeric" min="0" max="5000" placeholder="From WAVV, e.g. 512" />
-        </label>
+        <div class="dials-box">
+          <div class="dials-head">
+            <span>Dials today <b class="req">*</b></span>
+            <span id="dials-total" class="muted small" hidden></span>
+          </div>
+          <div id="dials-fields" class="dials-fields"></div>
+          <select id="dials-add" class="dials-add" hidden aria-label="Add dials for another client"></select>
+        </div>
         <div id="eod-checks" class="checks" hidden>
-          <h3>Daily targets</h3>
+          <h3 id="checks-title">Daily target</h3>
           <ul id="eod-checks-list"></ul>
+          <p id="checks-status" class="checks-status"></p>
           <p class="muted small">Booked is counted from the calls you logged.</p>
         </div>
         <label>
-          <span>What worked well today?</span>
-          <textarea name="went_well" rows="3" maxlength="2000"></textarea>
+          <span>How did the day go? What worked? <b class="req">*</b></span>
+          <textarea name="went_well" rows="3" maxlength="2000" placeholder="e.g. The bridge line before the booking ask landed 2 appointments"></textarea>
         </label>
         <label>
-          <span>What should improve tomorrow?</span>
-          <textarea name="improve" rows="3" maxlength="2000"></textarea>
+          <span>What should improve tomorrow? <b class="req">*</b></span>
+          <textarea name="improve" rows="3" maxlength="2000" placeholder="e.g. Answer &quot;who are you with?&quot; in one line"></textarea>
         </label>
         <label>
           <span><span id="blockers-label">Blockers?</span> <em id="blockers-hint">(leads, tech, script…)</em></span>
