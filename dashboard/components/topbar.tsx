@@ -2,7 +2,7 @@ import Link from "next/link";
 
 type Props = {
   workspace?: { id: string; name: string };
-  active?: "dashboard" | "settings";
+  active?: "dashboard" | "reports" | "settings";
   children?: React.ReactNode;
 };
 
@@ -21,6 +21,9 @@ export function TopBar({ workspace, active, children }: Props) {
             <nav className="subnav">
               <Link href={`/w/${workspace.id}`} className={active === "dashboard" ? "on" : ""}>
                 Dashboard
+              </Link>
+              <Link href={`/w/${workspace.id}/reports`} className={active === "reports" ? "on" : ""}>
+                Reports
               </Link>
               <Link href={`/w/${workspace.id}/settings`} className={active === "settings" ? "on" : ""}>
                 Team & settings
