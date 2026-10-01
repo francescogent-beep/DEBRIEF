@@ -315,3 +315,11 @@ a.ws-row:hover { border-color: var(--ink-2); }
 .status-done::before { content: "✓"; width: auto; height: auto; background: none; }
 .status-quiet { color: var(--bad); }
 .status-idle, .status-none { color: var(--muted); }
+
+/* Time between pick-ups */
+.gap-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 10px; margin: 12px 0 16px; }
+.gap-stats > div { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.gap-stats span { display: block; font-size: 12px; color: var(--muted); }
+.gap-stats b { font-size: 22px; }
+.gap-stats small { font-size: 12px; font-weight: 500; color: var(--muted); }
+.grid-2.inner { gap: 24px; margin-bottom: 4px; }

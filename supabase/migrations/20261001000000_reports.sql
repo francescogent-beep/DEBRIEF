@@ -44,6 +44,24 @@ begin
       and e.day >= (p_from at time zone p_tz)::date
       and e.day <  (p_to   at time zone p_tz)::date
   ),
+  -- Minutes between a rep's consecutive pick-ups on the same day (all clients).
+  gap_src as (
+    select l.rep_id, (l.created_at at time zone p_tz) as lt
+    from call_logs l
+    where l.workspace_id = p_workspace
+      and (p_rep is null or l.rep_id = p_rep)
+      and l.created_at >= p_from and l.created_at < p_to
+  ),
+  gaps as (
+    select rep_id, lt::date as d, lt,
+           extract(epoch from lt - lag(lt) over (partition by rep_id, lt::date order by lt)) / 60.0 as gap
+    from gap_src
+  ),
+  rep_days as (
+    select rep_id, d, count(*) as n, min(lt) as first_at, max(lt) as last_at, max(gap) as longest,
+           count(*) filter (where gap >= 30) as long_gaps
+    from gaps group by rep_id, d
+  ),
   stage_opts as (
     select o.id, o.label, o.sort from options o
     where o.workspace_id = p_workspace and o.kind = 'stage'
@@ -139,6 +157,32 @@ begin
     'objections', coalesce((select jsonb_agg(x) from (
                   select o.label, count(*) n from cur c join options o on o.id = c.objection_id
                   group by o.label order by count(*) desc, o.label limit 8) x), '[]'::jsonb),
+    'gaps', jsonb_build_object(
+      'median',   (select round(percentile_cont(0.5) within group (order by gap)::numeric, 1) from gaps where gap is not null),
+      'buckets',  coalesce((select jsonb_agg(jsonb_build_object('b', b, 'n', n) order by b) from (
+                     select case when gap < 5 then 0 when gap < 10 then 1 when gap < 20 then 2
+                                 when gap < 30 then 3 when gap < 60 then 4 else 5 end as b, count(*) n
+                     from gaps where gap is not null group by 1) x), '[]'::jsonb),
+      'by_hour',  coalesce((select jsonb_agg(jsonb_build_object('hour', h, 'median', m, 'n', n) order by h) from (
+                     select extract(hour from lt)::int h,
+                            round(percentile_cont(0.5) within group (order by gap)::numeric, 1) m, count(*) n
+                     from gaps where gap is not null group by 1) x), '[]'::jsonb),
+      'reps',     coalesce((select jsonb_agg(x order by x.median nulls last) from (
+                     select g.rep_id as id, coalesce(p.full_name, p.email) as name,
+                       round(percentile_cont(0.5) within group (order by g.gap)::numeric, 1)  as median,
+                       round(percentile_cont(0.9) within group (order by g.gap)::numeric, 1)  as p90,
+                       count(g.gap)                                                          as n_gaps,
+                       (select count(*) from rep_days rd where rd.rep_id = g.rep_id)          as days,
+                       (select sum(long_gaps) from rep_days rd where rd.rep_id = g.rep_id)   as long_gaps,
+                       (select round(avg(longest)::numeric) from rep_days rd where rd.rep_id = g.rep_id and longest is not null) as avg_longest,
+                       (select to_char(avg(first_at::time), 'HH24:MI') from rep_days rd where rd.rep_id = g.rep_id) as avg_first,
+                       (select to_char(avg(last_at::time),  'HH24:MI') from rep_days rd where rd.rep_id = g.rep_id) as avg_last,
+                       (select round(sum(n)::numeric / nullif(sum(extract(epoch from last_at - first_at) / 3600.0), 0), 1)
+                          from rep_days rd where rd.rep_id = g.rep_id and n > 1)            as per_hour
+                     from gaps g join profiles p on p.id = g.rep_id
+                     where g.gap is not null
+                     group by g.rep_id, p.full_name, p.email) x), '[]'::jsonb)
+    ),
     'daily',   coalesce((select jsonb_agg(x order by x.day) from (
                   select lt::date as day, count(*) as pickups, count(*) filter (where is_success) as booked
                   from cur group by 1) x), '[]'::jsonb),

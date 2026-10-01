@@ -108,6 +108,7 @@ Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheet
 - **Rep scorecard:** pick-ups, booked, book rate and trend, average dials, days on target, EODs done, biggest leak vs the team, top objection.
 - **Where each rep loses calls:** stage-by-stage share vs the team, with outliers highlighted.
 - **Daily trend, where calls die, top objections.**
+- **Time between pick-ups:** typical gap, 30+ minute gaps per day, typical gap by hour, and per rep: first/last pick-up and pick-ups per hour.
 - **Client results:** funnel per client, biggest drop, best rep, best hour, top objections, plus a **Rep × client** table.
 
 Patterns get reliable at roughly 100+ pick-ups in the range; the page says so when data is thin.

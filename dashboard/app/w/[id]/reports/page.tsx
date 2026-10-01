@@ -59,8 +59,27 @@ type Report = {
   heatmap: Cell[];
   objections: Obj[];
   daily: { day: string; pickups: number; booked: number }[];
+  gaps?: {
+    median: number | null;
+    buckets: { b: number; n: number }[];
+    by_hour: { hour: number; median: number; n: number }[];
+    reps: GapRep[];
+  };
   reps: Rep[];
   clients: Client[];
+};
+type GapRep = {
+  id: string;
+  name: string;
+  median: number | null;
+  p90: number | null;
+  n_gaps: number;
+  days: number;
+  long_gaps: number;
+  avg_longest: number | null;
+  avg_first: string | null;
+  avg_last: string | null;
+  per_hour: number | null;
 };
 type RepClient = {
   user_id: string;
@@ -88,6 +107,17 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const rate = (b: number, n: number) => (n ? b / n : 0);
 const pctTxt = (b: number, n: number) => (n ? `${Math.round((b / n) * 100)}%` : "–");
 const hourTxt = (h: number) => `${h % 12 === 0 ? 12 : h % 12}${h < 12 ? "am" : "pm"}`;
+const minTxt = (raw: number | null | undefined) => {
+  if (raw == null) return "—";
+  const m = Math.round(raw);
+  return m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${m} min`;
+};
+const clockTxt = (t: string | null) => {
+  if (!t) return "—";
+  const [h, m] = t.split(":").map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, "0")}${h < 12 ? "am" : "pm"}`;
+};
+const GAP_BUCKETS = ["Under 5 min", "5–10 min", "10–20 min", "20–30 min", "30–60 min", "Over 1 hour"];
 const slotTxt = (h: number) => `${hourTxt(h)}–${hourTxt((h + 1) % 24)}`;
 const tzName = () =>
   new Intl.DateTimeFormat("en-US", { timeZone: TEAM_TZ, timeZoneName: "long" })
@@ -322,6 +352,43 @@ export default async function Reports({
       </>
     );
   }
+  // Time between pick-ups
+  const gaps = r.gaps;
+  const gapReps = (gaps?.reps ?? []).filter((g) => g.n_gaps >= 20);
+  const teamGap = gaps?.median ?? null;
+  const slowRep = teamGap
+    ? [...gapReps].filter((g) => (g.median ?? 0) >= teamGap * 1.3).sort((a, b) => (b.median ?? 0) - (a.median ?? 0))[0]
+    : undefined;
+  const gapHours = (gaps?.by_hour ?? []).filter((h) => h.n >= Math.max(10, minSample));
+  const slowHour = [...gapHours].sort((a, b) => b.median - a.median)[0];
+  const maxHourGap = Math.max(1, ...gapHours.map((h) => h.median));
+  const bucketItems = GAP_BUCKETS.map((label, i) => ({
+    id: String(i),
+    label,
+    n: gaps?.buckets.find((b) => b.b === i)?.n ?? 0,
+  }));
+  const gapTotal = bucketItems.reduce((a, b) => a + b.n, 0);
+  const totalLong = (gaps?.reps ?? []).reduce((a, g) => a + (g.long_gaps ?? 0), 0);
+  const totalGapDays = (gaps?.reps ?? []).reduce((a, g) => a + g.days, 0);
+  if (teamGap != null && gapTotal >= 20) {
+    findings.push(
+      <>
+        Typical time between pick-ups is <b>{minTxt(teamGap)}</b>
+        {slowRep ? (
+          <>
+            ; <b>{slowRep.name}</b> averages <b>{minTxt(slowRep.median)}</b>
+          </>
+        ) : null}
+        {slowHour && slowHour.median >= teamGap * 1.3 ? (
+          <>
+            {slowRep ? ", and" : ";"} the slowest hour is <b>{slotTxt(slowHour.hour)}</b> ({minTxt(slowHour.median)})
+          </>
+        ) : null}
+        .
+      </>
+    );
+  }
+
   if (t.rep_days > 0) {
     const missing = Math.max(0, t.rep_days - t.eods);
     if (missing > 0) {
@@ -637,6 +704,111 @@ export default async function Reports({
                 </div>
               </div>
             </section>
+
+            {/* Time between pick-ups */}
+            {gaps && gapTotal > 0 && (
+              <section className="card">
+                <h2>Time between pick-ups</h2>
+                <p className="muted small">
+                  Minutes from one pick-up to the next for the same rep on the same day, across all clients. Reps only
+                  log answered calls, so this reflects dialing pace and pick-up luck together. Gaps of 30+ minutes
+                  usually mean breaks, admin or not dialing.
+                </p>
+                <div className="gap-stats">
+                  <div>
+                    <span>Typical gap</span>
+                    <b>{minTxt(teamGap)}</b>
+                  </div>
+                  <div>
+                    <span>Gaps of 30+ min</span>
+                    <b>
+                      {totalGapDays ? (totalLong / totalGapDays).toFixed(1) : "–"}
+                      <small> per rep per day</small>
+                    </b>
+                  </div>
+                  <div>
+                    <span>Pick-ups per hour on the phones</span>
+                    <b>
+                      {(() => {
+                        const v = (gaps.reps ?? []).filter((g) => g.per_hour != null);
+                        return v.length ? (v.reduce((a, g) => a + (g.per_hour ?? 0), 0) / v.length).toFixed(1) : "–";
+                      })()}
+                    </b>
+                  </div>
+                </div>
+                <div className="grid-2 inner">
+                  <div>
+                    <h3 className="h3">How long reps wait between pick-ups</h3>
+                    <BarList items={bucketItems} total={gapTotal} empty="Not enough calls yet." unit="gaps" />
+                  </div>
+                  <div>
+                    <h3 className="h3">Typical gap by hour</h3>
+                    {gapHours.length === 0 ? (
+                      <p className="muted small empty">Not enough calls yet.</p>
+                    ) : (
+                      <ul className="barlist">
+                        {gapHours.map((h) => (
+                          <li key={h.hour} title={`${slotTxt(h.hour)}: typical gap ${minTxt(h.median)} (${h.n} gaps)`}>
+                            <span className="bl-label">{slotTxt(h.hour)}</span>
+                            <span className="bl-track">
+                              <span className="bl-fill" style={{ width: `${(h.median / maxHourGap) * 100}%` }} />
+                            </span>
+                            <span className="bl-value">{minTxt(h.median)}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </div>
+
+                <h3 className="h3 mt">By rep</h3>
+                <p className="muted small">
+                  Typical = half of gaps are shorter. Slow gaps = 1 in 10 gaps is longer. Highlighted = 30%+ slower than
+                  the team.
+                </p>
+                <div className="table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Rep</th>
+                        <th className="num">Typical gap</th>
+                        <th className="num">Slow gaps</th>
+                        <th className="num">30+ min gaps / day</th>
+                        <th className="num">Longest gap / day</th>
+                        <th className="num">First pick-up</th>
+                        <th className="num">Last pick-up</th>
+                        <th className="num">Pick-ups / hour</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(gaps.reps ?? []).map((g) => {
+                        const slow = teamGap != null && g.n_gaps >= 20 && (g.median ?? 0) >= teamGap * 1.3;
+                        return (
+                          <tr key={g.id}>
+                            <td>
+                              <Link href={qs({ rep: g.id })} className="row-link">
+                                <b>{g.name}</b>
+                              </Link>
+                            </td>
+                            <td className={`num ${slow ? "leak" : ""}`}>
+                              {minTxt(g.median)}
+                              {slow && <span aria-label="slower than team"> ▲</span>}
+                            </td>
+                            <td className="num">{minTxt(g.p90)}</td>
+                            <td className="num">{g.days ? (g.long_gaps / g.days).toFixed(1) : "—"}</td>
+                            <td className="num">{minTxt(g.avg_longest)}</td>
+                            <td className="num">{clockTxt(g.avg_first)}</td>
+                            <td className="num">{clockTxt(g.avg_last)}</td>
+                            <td className="num">{g.per_hour ?? "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="muted small">First and last pick-up are averages across the days each rep logged calls.</p>
+              </section>
+            )}
 
             {/* Reps */}
             <section className="card">
