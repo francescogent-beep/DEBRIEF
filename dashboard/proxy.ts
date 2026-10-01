@@ -5,9 +5,10 @@ import { NextResponse, type NextRequest } from "next/server";
 // visitors on the login page.
 export async function proxy(request: NextRequest) {
   // /export/* is protected by its own secret key (Google Sheets can't sign in).
-  // /log is the rep logger web page, which has its own sign-in.
+  // /log is the rep logger web page (own sign-in); /downloads has the extension zip.
   const p = request.nextUrl.pathname;
-  if (p.startsWith("/export/") || p === "/log" || p.startsWith("/log/")) return NextResponse.next({ request });
+  if (p.startsWith("/export/") || p.startsWith("/downloads/") || p === "/log" || p.startsWith("/log/"))
+    return NextResponse.next({ request });
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(
