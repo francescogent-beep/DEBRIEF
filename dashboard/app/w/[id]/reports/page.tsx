@@ -3,7 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase-server";
 import { TopBar } from "@/components/topbar";
 import { FilterSelect } from "@/components/filter-select";
-import { TEAM_TZ, startOfDay } from "@/lib/time";
+import { BarList, DailyChart } from "@/components/charts";
+import { TEAM_TZ, startOfDay, tzDate } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
 
@@ -57,8 +58,20 @@ type Report = {
   stages: Stage[];
   heatmap: Cell[];
   objections: Obj[];
+  daily: { day: string; pickups: number; booked: number }[];
   reps: Rep[];
   clients: Client[];
+};
+type RepClient = {
+  user_id: string;
+  rep_name: string | null;
+  client_id: string | null;
+  client_name: string;
+  conversations: number;
+  booked: number;
+  dials: number;
+  top_stage: string | null;
+  top_objection: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -133,7 +146,7 @@ export default async function Reports({
   const from = startOfDay(TEAM_TZ, range.days - 1);
   const to = new Date(startOfDay(TEAM_TZ, 0).getTime() + 86_400_000);
 
-  const [{ data, error }, { data: clientRows }, { data: memberRows }] = await Promise.all([
+  const [{ data, error }, { data: clientRows }, { data: memberRows }, { data: statsData }] = await Promise.all([
     supabase.rpc("workspace_report", {
       p_workspace: id,
       p_from: from.toISOString(),
@@ -148,6 +161,14 @@ export default async function Reports({
       .select("user_id, profile:profiles(full_name,email)")
       .eq("workspace_id", id)
       .eq("active", true),
+    // Rep × client table (includes dials split per client from EODs).
+    supabase.rpc("workspace_stats", {
+      p_workspace: id,
+      p_from: from.toISOString(),
+      p_to: to.toISOString(),
+      p_tz: TEAM_TZ,
+      ...(clientFilter ? { p_client: clientFilter } : {}),
+    }),
   ]);
 
   if (error) {
@@ -312,6 +333,19 @@ export default async function Reports({
     }
   }
 
+  // Daily trend with empty days filled in so gaps are visible.
+  const byDay = new Map((r.daily ?? []).map((d) => [d.day, d]));
+  const trendDays = Array.from({ length: range.days }, (_, i) => {
+    const day = tzDate(TEAM_TZ, range.days - 1 - i);
+    const d = byDay.get(day);
+    return { day, conversations: d?.pickups ?? 0, booked: d?.booked ?? 0 };
+  });
+  const lostTotal = t.lost_staged;
+  const objectionTotal = r.objections.reduce((a, o) => a + o.n, 0);
+  const repClients = ((statsData as { rep_clients?: RepClient[] } | null)?.rep_clients ?? []).filter(
+    (rc) => !repFilter || rc.user_id === repFilter
+  );
+
   const thin = t.pickups < 100;
   const zone = tzName();
 
@@ -414,6 +448,31 @@ export default async function Reports({
                 )}
               </section>
             )}
+
+            {/* Trend */}
+            <section className="card">
+              <h2>Daily trend</h2>
+              <DailyChart days={trendDays} />
+            </section>
+
+            {/* Where calls die + objections */}
+            <div className="grid-2">
+              <section className="card">
+                <h2>Where calls die</h2>
+                <p className="muted small">Share of lost calls ({lostTotal}) by the stage they ended at.</p>
+                <BarList items={r.stages} total={lostTotal} empty="No stages logged in this period." />
+              </section>
+              <section className="card">
+                <h2>Top objections</h2>
+                <p className="muted small">How often each objection came up.</p>
+                <BarList
+                  items={r.objections.map((o) => ({ id: o.label, ...o }))}
+                  total={objectionTotal}
+                  empty="No objections logged in this period."
+                  unit="times"
+                />
+              </section>
+            </div>
 
             {/* When to call */}
             <section className="card">
@@ -813,6 +872,47 @@ export default async function Reports({
                       </article>
                     );
                   })}
+                </div>
+              </section>
+            )}
+
+            {/* Rep x client */}
+            {clientOpts.length > 0 && repClients.length > 0 && (
+              <section className="card">
+                <h2>Rep × client</h2>
+                <p className="muted small">How each rep performs for each client they called for.</p>
+                <div className="table-wrap">
+                  <table className="table">
+                    <thead>
+                      <tr>
+                        <th>Rep</th>
+                        <th>Client</th>
+                        <th className="num">Dials</th>
+                        <th className="num">Pick-ups</th>
+                        <th className="num">Booked</th>
+                        <th className="num">Book rate</th>
+                        <th>Most died at</th>
+                        <th>Top objection</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {repClients.map((rc, i) => {
+                        const first = i === 0 || repClients[i - 1].user_id !== rc.user_id;
+                        return (
+                          <tr key={`${rc.user_id}-${rc.client_id ?? "none"}`} className={first ? "group-start" : ""}>
+                            <td>{first ? <b>{rc.rep_name || "Someone"}</b> : ""}</td>
+                            <td className={rc.client_id ? "" : "muted"}>{rc.client_name}</td>
+                            <td className="num">{rc.dials ? rc.dials.toLocaleString() : "—"}</td>
+                            <td className="num">{rc.conversations}</td>
+                            <td className="num good-text">{rc.booked}</td>
+                            <td className="num">{pctTxt(rc.booked, rc.conversations)}</td>
+                            <td>{rc.top_stage ?? <span className="muted">—</span>}</td>
+                            <td>{rc.top_objection ?? <span className="muted">—</span>}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </section>
             )}

@@ -304,3 +304,14 @@ a.ws-row:hover { border-color: var(--ink-2); }
 .client-facts dd { margin: 0; }
 @media (prefers-color-scheme: dark) { .f-track i { background: #5598e7; } }
 .funnel-note { margin: -6px 0 10px; }
+
+/* Dashboard = one day, live */
+.day-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.day-head .range a { white-space: nowrap; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.status-live { color: var(--good); }
+.status-done { color: var(--good); }
+.status-done::before { content: "✓"; width: auto; height: auto; background: none; }
+.status-quiet { color: var(--bad); }
+.status-idle, .status-none { color: var(--muted); }

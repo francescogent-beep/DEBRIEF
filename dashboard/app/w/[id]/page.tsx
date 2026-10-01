@@ -2,10 +2,12 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase-server";
 import { TopBar } from "@/components/topbar";
-import { BarList, DailyChart } from "@/components/charts";
-import { RANGES, TEAM_TZ, rangeWindow, relativeTime, pct, tzDate, type RangeKey } from "@/lib/time";
+import { TEAM_TZ, relativeTime, pct, tzDate, startOfDay } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
+
+// The dashboard is the live view of one day (today by default).
+// Anything over time — trends, best hours, coaching, client funnels — lives in Reports.
 
 type Opt = { id: string; label: string; n: number; sort: number; is_success?: boolean };
 type RepStat = {
@@ -16,11 +18,6 @@ type RepStat = {
   conversations: number;
   booked: number;
   last_log: string | null;
-  eods: number;
-  avg_energy: number | null;
-  dials: number;
-  days_hit: number;
-  stages: Record<string, number> | null;
 };
 type ClientStat = {
   id: string | null;
@@ -30,53 +27,51 @@ type ClientStat = {
   booked: number;
   dials: number;
   reps: number;
-  top_stage: string | null;
-  top_objection: string | null;
-};
-type RepClientStat = {
-  user_id: string;
-  rep_name: string | null;
-  client_id: string | null;
-  client_name: string;
-  conversations: number;
-  booked: number;
-  dials: number;
-  top_stage: string | null;
-  top_objection: string | null;
 };
 type Stats = {
   totals: { conversations: number; booked: number; active_reps: number; dials: number };
   targets: { min_dials: number | null; min_booked: number | null };
   reps: RepStat[];
   clients: ClientStat[];
-  rep_clients: RepClientStat[];
   outcomes: Opt[];
   stages: Opt[];
   objections: Opt[];
-  daily: { day: string; conversations: number; booked: number }[];
 };
+
+const QUIET_MIN = 45; // no call logged for this long during a shift = "quiet"
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Start of a calendar day (YYYY-MM-DD) in the team timezone, as a UTC instant.
+function dayStart(day: string) {
+  const today = tzDate(TEAM_TZ);
+  const diff = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${day}T00:00:00Z`)) / 86_400_000);
+  return startOfDay(TEAM_TZ, diff);
+}
+function shiftDay(day: string, by: number) {
+  const d = new Date(`${day}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + by);
+  return d.toISOString().slice(0, 10);
+}
+const fmtDay = (day: string) =>
+  new Date(`${day}T12:00:00Z`).toLocaleDateString("en-US", {
+    weekday: "long",
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
 
 export default async function Dashboard({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ range?: string; client?: string }>;
+  searchParams: Promise<{ day?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const range: RangeKey = (["today", "7d", "30d"] as const).includes(sp.range as RangeKey)
-    ? (sp.range as RangeKey)
-    : "7d";
-  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-  const clientFilter = sp.client && UUID.test(sp.client) ? sp.client : null;
-  const qs = (next: { range?: string; client?: string | null }) => {
-    const params = new URLSearchParams();
-    params.set("range", next.range ?? range);
-    const c = next.client === undefined ? clientFilter : next.client;
-    if (c) params.set("client", c);
-    return `?${params.toString()}`;
-  };
+  const today = tzDate(TEAM_TZ);
+  const day = sp.day && DAY_RE.test(sp.day) && sp.day < today ? sp.day : today;
+  const isToday = day === today;
 
   const { supabase, user } = await requireUser();
   if (!user) redirect("/login");
@@ -84,13 +79,13 @@ export default async function Dashboard({
   const { data: ws } = await supabase.from("workspaces").select("id,name").eq("id", id).single();
   if (!ws) notFound();
 
-  const win = rangeWindow(range);
+  const from = dayStart(day);
+  const to = new Date(from.getTime() + 86_400_000);
   const { data: statsData, error } = await supabase.rpc("workspace_stats", {
     p_workspace: id,
-    p_from: win.from.toISOString(),
-    p_to: win.to.toISOString(),
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
     p_tz: TEAM_TZ,
-    ...(clientFilter ? { p_client: clientFilter } : {}),
   });
 
   if (error) {
@@ -114,69 +109,36 @@ export default async function Dashboard({
   const [{ data: eods }, { data: notes }] = await Promise.all([
     supabase
       .from("eods")
-      .select("id,day,dials,dials_by_client,conversations,booked,went_well,improve,blockers,energy,updated_at,rep:profiles(full_name,email)")
+      .select(
+        "id,rep_id,day,dials,dials_by_client,conversations,booked,went_well,improve,blockers,energy,updated_at,rep:profiles(full_name,email)"
+      )
       .eq("workspace_id", id)
-      .gte("day", win.fromDay)
-      .order("day", { ascending: false })
-      .order("updated_at", { ascending: false })
-      .limit(60),
-    (() => {
-      let q = supabase
-        .from("call_logs")
-        .select("id,note,created_at,outcome_id,stage_id,objection_id,client_id,rep:profiles(full_name,email)")
-        .eq("workspace_id", id)
-        .not("note", "is", null)
-        .gte("created_at", win.from.toISOString());
-      if (clientFilter) q = q.eq("client_id", clientFilter);
-      return q.order("created_at", { ascending: false }).limit(30);
-    })(),
+      .eq("day", day)
+      .order("updated_at", { ascending: false }),
+    supabase
+      .from("call_logs")
+      .select("id,note,created_at,outcome_id,stage_id,objection_id,client_id,rep:profiles(full_name,email)")
+      .eq("workspace_id", id)
+      .not("note", "is", null)
+      .gte("created_at", from.toISOString())
+      .lt("created_at", to.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(50),
   ]);
 
   const labels = new Map<string, Opt>();
   for (const o of [...stats.outcomes, ...stats.stages, ...stats.objections]) labels.set(o.id, o);
 
-  const { conversations, booked } = stats.totals;
-  const lost = conversations - booked;
-  const objectionTotal = stats.objections.reduce((s, o) => s + o.n, 0);
-  const reps = stats.reps.filter((r) => r.role === "rep" || r.conversations > 0);
-  const repCount = stats.reps.filter((r) => r.role === "rep").length;
-  const today = tzDate(TEAM_TZ);
-  const eodsToday = (eods ?? []).filter((e) => e.day === today).length;
-  const blockers = (eods ?? []).filter((e) => e.blockers);
+  const name = (r: { full_name?: string | null; email?: string | null } | null) =>
+    r?.full_name || r?.email?.split("@")[0] || "Someone";
 
-  // Daily targets
+  // Targets: on target = min dials OR min booked (whichever are set).
   const t = stats.targets ?? { min_dials: null, min_booked: null };
   const hasTargets = t.min_dials != null || t.min_booked != null;
-  const dialsOk = (d: number | null) => t.min_dials == null || (d ?? 0) >= t.min_dials;
-  const bookedOk = (b: number) => t.min_booked == null || b >= t.min_booked;
-  // On target = min dials OR min booked (whichever targets are set).
   const hitDay = (e: { dials: number | null; booked: number }) =>
     !hasTargets ||
     (t.min_dials != null && (e.dials ?? 0) >= t.min_dials) ||
     (t.min_booked != null && e.booked >= t.min_booked);
-  const eodsHitToday = (eods ?? []).filter((e) => e.day === today && hitDay(e)).length;
-  const eodsHitRange = (eods ?? []).filter(hitDay).length;
-
-  // Fill in days without calls so the trend is honest.
-  const byDay = new Map(stats.daily.map((d) => [d.day, d]));
-  const days = Array.from({ length: win.days }, (_, i) => {
-    const day = tzDate(TEAM_TZ, win.days - 1 - i);
-    return byDay.get(day) ?? { day, conversations: 0, booked: 0 };
-  });
-
-  const topStage = [...stats.stages].sort((a, b) => b.n - a.n)[0];
-  const topObjection = stats.objections[0];
-
-  const name = (r: { full_name?: string | null; email?: string | null } | null) =>
-    r?.full_name || r?.email?.split("@")[0] || "Someone";
-
-  // Clients
-  const clientList = stats.clients ?? [];
-  const realClients = clientList.filter((c) => c.id);
-  const clientNames = new Map(realClients.map((c) => [c.id as string, c.name]));
-  const hasClients = realClients.length > 0;
-  const activeClient = clientFilter ? clientNames.get(clientFilter) ?? "Client" : null;
-  const repClients = stats.rep_clients ?? [];
   const targetText = [
     t.min_dials != null ? `${t.min_dials} dials` : null,
     t.min_booked != null ? `${t.min_booked} booked` : null,
@@ -184,47 +146,61 @@ export default async function Dashboard({
     .filter(Boolean)
     .join(" or ");
 
+  const eodByRep = new Map((eods ?? []).map((e) => [e.rep_id as string, e]));
+  const { conversations, booked } = stats.totals;
+
+  // Team list: every rep, plus managers who logged calls.
+  type Status = { key: "done" | "live" | "quiet" | "idle" | "none"; text: string; order: number };
+  const statusOf = (r: RepStat): Status => {
+    if (eodByRep.has(r.user_id)) return { key: "done", text: "Signed off", order: 3 };
+    if (!r.last_log) return { key: "idle", text: isToday ? "No calls yet" : "No calls", order: 2 };
+    if (!isToday) return { key: "none", text: "No sign-off", order: 1 };
+    const mins = Math.round((Date.now() - new Date(r.last_log).getTime()) / 60_000);
+    if (mins < QUIET_MIN) return { key: "live", text: "Logging", order: 0 };
+    const quiet = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
+    return { key: "quiet", text: `Quiet ${quiet}`, order: 1 };
+  };
+  const team = stats.reps
+    .filter((r) => r.role === "rep" || r.conversations > 0)
+    .map((r) => ({ r, s: statusOf(r), eod: eodByRep.get(r.user_id) }))
+    .sort((a, b) => a.s.order - b.s.order || b.r.booked - a.r.booked || b.r.conversations - a.r.conversations);
+  const repCount = stats.reps.filter((r) => r.role === "rep").length;
+  const signedOff = eods?.length ?? 0;
+  const onTarget = (eods ?? []).filter(hitDay).length;
+  const quietReps = team.filter((x) => x.s.key === "quiet").length;
+  const blockers = (eods ?? []).filter((e) => e.blockers);
+
+  const clients = (stats.clients ?? []).filter((c) => c.conversations > 0 || c.dials > 0);
+  const clientNames = new Map((stats.clients ?? []).filter((c) => c.id).map((c) => [c.id as string, c.name]));
+  const hasClients = (stats.clients ?? []).some((c) => c.id);
+
   return (
     <>
       <TopBar workspace={ws} active="dashboard">
         <Link href={`/w/${id}/settings#export`} className="btn small export-btn">
           ⬇ Export / Google Sheets
         </Link>
-        <nav className="range" aria-label="Time range">
-          {RANGES.map((r) => (
-            <Link key={r.key} href={qs({ range: r.key })} className={r.key === range ? "on" : ""}>
-              {r.label}
-            </Link>
-          ))}
-        </nav>
       </TopBar>
 
       <main className="page">
-        {hasClients && (
-          <nav className="client-filter" aria-label="Filter by client">
-            <span className="muted small">Client</span>
-            <Link href={qs({ client: null })} className={!clientFilter ? "on" : ""}>
-              All clients
-            </Link>
-            {realClients.map((c) => (
-              <Link key={c.id} href={qs({ client: c.id })} className={clientFilter === c.id ? "on" : ""}>
-                {c.name}
-              </Link>
-            ))}
-          </nav>
-        )}
-        {activeClient && (
-          <p className="filter-note">
-            Showing <b>{activeClient}</b> only. Targets and end-of-day sign-offs are per rep across all clients.
-          </p>
-        )}
-
-        {/* KPIs */}
-        <section className="kpis">
-          <div className="kpi">
-            <span>Dials</span>
-            <b>{stats.totals.dials.toLocaleString()}</b>
+        <div className="day-head">
+          <div>
+            <h1 className="page-title">{isToday ? "Today" : fmtDay(day)}</h1>
+            <p className="muted small">
+              {isToday ? `${fmtDay(day)} · live` : "Past day"} ·{" "}
+              <Link href={`/w/${id}/reports`}>Trends, best times and coaching are in Reports →</Link>
+            </p>
           </div>
+          <nav className="range" aria-label="Day">
+            <Link href={`?day=${shiftDay(day, -1)}`}>← Previous day</Link>
+            <Link href="?" className={isToday ? "on" : ""}>
+              Today
+            </Link>
+            {!isToday && <Link href={shiftDay(day, 1) >= today ? "?" : `?day=${shiftDay(day, 1)}`}>Next day →</Link>}
+          </nav>
+        </div>
+
+        <section className="kpis">
           <div className="kpi">
             <span>Pick-ups</span>
             <b>{conversations}</b>
@@ -238,160 +214,36 @@ export default async function Dashboard({
             <b>{pct(booked, conversations)}</b>
           </div>
           <div className="kpi">
-            <span title={targetText ? `On target = ${targetText}` : undefined}>
-              {range === "today" ? "On target today" : "Days on target"}
-            </span>
+            <span title="From end-of-day sign-offs">Dials</span>
+            <b>{signedOff ? stats.totals.dials.toLocaleString() : "–"}</b>
+            {signedOff > 0 && signedOff < repCount && <small className="muted">from {signedOff} sign-offs</small>}
+          </div>
+          <div className="kpi">
+            <span>Signed off</span>
             <b>
-              {hasTargets ? (range === "today" ? eodsHitToday : eodsHitRange) : "–"}
-              {hasTargets && <small>/{range === "today" ? repCount : eods?.length ?? 0}</small>}
+              {signedOff}
+              <small>/{repCount}</small>
             </b>
           </div>
           <div className="kpi">
-            <span>{range === "today" ? "Signed off today" : "EOD sign-offs"}</span>
+            <span title={targetText ? `On target = ${targetText}` : undefined}>On target</span>
             <b>
-              {range === "today" ? eodsToday : eods?.length ?? 0}
-              {range === "today" && <small>/{repCount}</small>}
+              {hasTargets ? onTarget : "–"}
+              {hasTargets && <small>/{repCount}</small>}
             </b>
           </div>
         </section>
 
-        {conversations > 0 && (
+        {isToday && quietReps > 0 && (
           <p className="headline">
-            {topStage?.n ? (
-              <>
-                Most lost calls die at <b>{topStage.label}</b> ({pct(topStage.n, lost)} of lost calls)
-              </>
-            ) : (
-              <>No stages logged yet</>
-            )}
-            {topObjection?.n ? (
-              <>
-                {" "}· top objection: <b>{topObjection.label}</b>
-              </>
-            ) : null}
+            <b>{quietReps}</b> rep{quietReps > 1 ? "s haven't" : " hasn't"} logged a call in {QUIET_MIN}+ minutes.
           </p>
         )}
 
-        {/* Where calls die + objections */}
-        <div className="grid-2">
-          <section className="card">
-            <h2>Where calls die</h2>
-            <p className="muted small">Share of lost calls ({lost}) by the stage they ended at.</p>
-            <BarList items={stats.stages} total={lost} empty="No lost calls logged in this period." />
-          </section>
-          <section className="card">
-            <h2>Top objections</h2>
-            <p className="muted small">How often each objection came up.</p>
-            <BarList
-              items={stats.objections.filter((o) => o.n > 0)}
-              total={objectionTotal}
-              empty="No objections logged in this period."
-              unit="times"
-            />
-          </section>
-        </div>
-
-        {range !== "today" && (
-          <section className="card">
-            <h2>Daily trend</h2>
-            <DailyChart days={days} />
-          </section>
-        )}
-
-        {/* By client */}
-        {hasClients && !clientFilter && (
-          <section className="card">
-            <h2>By client</h2>
-            <p className="muted small">Results for each firm your reps call for. Click a client to filter the whole dashboard.</p>
-            <div className="table-wrap">
-              <table className="table">
-                <thead>
-                  <tr>
-                    <th>Client</th>
-                    <th className="num">Dials</th>
-                    <th className="num">Pick-ups</th>
-                    <th className="num">Booked</th>
-                    <th className="num">Book rate</th>
-                    <th className="num">Reps</th>
-                    <th>Most died at</th>
-                    <th>Top objection</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {clientList.map((c) => (
-                    <tr key={c.id ?? "none"} className={c.id ? "" : "muted-row"}>
-                      <td>
-                        {c.id ? (
-                          <Link href={qs({ client: c.id })} className="row-link">
-                            <b>{c.name}</b>
-                          </Link>
-                        ) : (
-                          <span className="muted">{c.name}</span>
-                        )}
-                      </td>
-                      <td className="num">{c.dials ? c.dials.toLocaleString() : "—"}</td>
-                      <td className="num">{c.conversations}</td>
-                      <td className="num good-text">{c.booked}</td>
-                      <td className="num">{pct(c.booked, c.conversations)}</td>
-                      <td className="num">{c.reps}</td>
-                      <td>{c.top_stage ?? <span className="muted">—</span>}</td>
-                      <td>{c.top_objection ?? <span className="muted">—</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        {hasClients && (
-          <section className="card">
-            <h2>Rep × client{activeClient ? ` — ${activeClient}` : ""}</h2>
-            <p className="muted small">How each rep performs for each client they called for.</p>
-            {repClients.length === 0 ? (
-              <p className="muted small empty">No calls logged in this period.</p>
-            ) : (
-              <div className="table-wrap">
-                <table className="table">
-                  <thead>
-                    <tr>
-                      <th>Rep</th>
-                      <th>Client</th>
-                      <th className="num">Dials</th>
-                      <th className="num">Pick-ups</th>
-                      <th className="num">Booked</th>
-                      <th className="num">Book rate</th>
-                      <th>Most died at</th>
-                      <th>Top objection</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {repClients.map((rc, i) => {
-                      const firstOfRep = i === 0 || repClients[i - 1].user_id !== rc.user_id;
-                      return (
-                        <tr key={`${rc.user_id}-${rc.client_id ?? "none"}`} className={firstOfRep ? "group-start" : ""}>
-                          <td>{firstOfRep ? <b>{rc.rep_name || "Someone"}</b> : ""}</td>
-                          <td className={rc.client_id ? "" : "muted"}>{rc.client_name}</td>
-                          <td className="num">{rc.dials ? rc.dials.toLocaleString() : "—"}</td>
-                          <td className="num">{rc.conversations}</td>
-                          <td className="num good-text">{rc.booked}</td>
-                          <td className="num">{pct(rc.booked, rc.conversations)}</td>
-                          <td>{rc.top_stage ?? <span className="muted">—</span>}</td>
-                          <td>{rc.top_objection ?? <span className="muted">—</span>}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
-        )}
-
-        {/* Reps */}
+        {/* Team */}
         <section className="card">
-          <h2>Reps</h2>
-          {reps.length === 0 ? (
+          <h2>Team</h2>
+          {team.length === 0 ? (
             <p className="muted small empty">
               No reps yet. Share a rep invite code from <Link href={`/w/${id}/settings`}>Team & settings</Link>.
             </p>
@@ -401,58 +253,86 @@ export default async function Dashboard({
                 <thead>
                   <tr>
                     <th>Rep</th>
-                    <th className="num">Dials</th>
+                    <th>Status</th>
                     <th className="num">Pick-ups</th>
                     <th className="num">Booked</th>
                     <th className="num">Book rate</th>
-                    <th>Most died at</th>
-                    <th className="num">On target</th>
-                    <th className="num">Energy</th>
-                    <th>Last log</th>
+                    <th className="num">Dials</th>
+                    <th>Target</th>
+                    <th>Last call</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {reps.map((r) => {
-                    const died = Object.entries(r.stages ?? {}).sort((a, b) => b[1] - a[1])[0];
-                    const lostR = r.conversations - r.booked;
-                    return (
-                      <tr key={r.user_id}>
-                        <td>
+                  {team.map(({ r, s, eod }) => (
+                    <tr key={r.user_id}>
+                      <td>
+                        <Link href={`/w/${id}/reports?rep=${r.user_id}`} className="row-link" title="Open this rep's report">
                           <b>{name(r)}</b>
-                          {r.role === "manager" && <span className="tag">manager</span>}
-                        </td>
-                        <td className="num">{r.dials ? r.dials.toLocaleString() : "—"}</td>
-                        <td className="num">{r.conversations}</td>
-                        <td className="num good-text">{r.booked}</td>
-                        <td className="num">{pct(r.booked, r.conversations)}</td>
-                        <td>
-                          {died ? (
-                            <>
-                              {labels.get(died[0])?.label} <span className="muted">({pct(died[1], lostR)})</span>
-                            </>
-                          ) : (
-                            <span className="muted">—</span>
-                          )}
-                        </td>
-                        <td className="num">
-                          {r.eods ? (
-                            <span className={`hit ${r.days_hit === r.eods ? "ok" : "miss"}`}>
-                              {r.days_hit}/{r.eods} days
-                            </span>
-                          ) : (
-                            <span className="muted">no EODs</span>
-                          )}
-                        </td>
-                        <td className="num">{r.avg_energy ?? "—"}</td>
-                        <td className="muted">{relativeTime(r.last_log)}</td>
-                      </tr>
-                    );
-                  })}
+                        </Link>
+                        {r.role === "manager" && <span className="tag">manager</span>}
+                      </td>
+                      <td>
+                        <span className={`status status-${s.key}`}>{s.text}</span>
+                      </td>
+                      <td className="num">{r.conversations}</td>
+                      <td className="num good-text">{r.booked}</td>
+                      <td className="num">{pct(r.booked, r.conversations)}</td>
+                      <td className="num">{eod?.dials != null ? eod.dials.toLocaleString() : <span className="muted">—</span>}</td>
+                      <td>
+                        {eod && hasTargets ? (
+                          <span className={`hit ${hitDay(eod) ? "ok" : "miss"}`} title={`On target = ${targetText}`}>
+                            {hitDay(eod) ? "✓ hit" : "✗ missed"}
+                          </span>
+                        ) : (
+                          <span className="muted">—</span>
+                        )}
+                      </td>
+                      <td className="muted">{r.last_log ? (isToday ? relativeTime(r.last_log) : new Date(r.last_log).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ })) : "—"}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
         </section>
+
+        {hasClients && clients.length > 0 && (
+          <section className="card">
+            <h2>Clients {isToday ? "today" : "this day"}</h2>
+            <div className="table-wrap">
+              <table className="table compact">
+                <thead>
+                  <tr>
+                    <th>Client</th>
+                    <th className="num">Pick-ups</th>
+                    <th className="num">Booked</th>
+                    <th className="num">Book rate</th>
+                    <th className="num">Reps</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {clients.map((c) => (
+                    <tr key={c.id ?? "none"} className={c.id ? "" : "muted-row"}>
+                      <td>
+                        {c.id ? (
+                          <Link href={`/w/${id}/reports?client=${c.id}`} className="row-link" title="Open this client's report">
+                            <b>{c.name}</b>
+                          </Link>
+                        ) : (
+                          <span className="muted">{c.name}</span>
+                        )}
+                      </td>
+                      <td className="num">{c.conversations}</td>
+                      <td className="num good-text">{c.booked}</td>
+                      <td className="num">{pct(c.booked, c.conversations)}</td>
+                      <td className="num">{c.reps}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        )}
 
         <div className="grid-2 align-start">
           {/* EOD feed */}
@@ -460,9 +340,11 @@ export default async function Dashboard({
             <h2>End-of-day sign-offs</h2>
             {blockers.length > 0 && (
               <div className="blockers">
-                <b>{blockers.length} blocker{blockers.length > 1 ? "s" : ""} flagged</b>
+                <b>
+                  {blockers.length} blocker{blockers.length > 1 ? "s" : ""} flagged
+                </b>
                 <ul>
-                  {blockers.slice(0, 5).map((e) => (
+                  {blockers.map((e) => (
                     <li key={e.id}>
                       <span className="muted">{name(e.rep as never)}:</span> {e.blockers}
                     </li>
@@ -471,20 +353,15 @@ export default async function Dashboard({
               </div>
             )}
             {!eods?.length ? (
-              <p className="muted small empty">No sign-offs in this period yet.</p>
+              <p className="muted small empty">
+                {isToday ? "Nobody has signed off yet today." : "Nobody signed off this day."}
+              </p>
             ) : (
               <ul className="feed">
                 {eods.map((e) => (
                   <li key={e.id} className="eod">
                     <div className="eod-head">
                       <b>{name(e.rep as never)}</b>
-                      <span className="muted small">
-                        {new Date(`${e.day}T12:00:00`).toLocaleDateString("en-US", {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                        })}
-                      </span>
                       <span className="eod-stats">
                         {hasTargets && (
                           <span className={`hit ${hitDay(e) ? "ok" : "miss"}`} title={`On target = ${targetText}`}>
@@ -532,14 +409,18 @@ export default async function Dashboard({
           <section className="card">
             <h2>Call notes</h2>
             {!notes?.length ? (
-              <p className="muted small empty">No notes in this period. Reps can add one when logging a call.</p>
+              <p className="muted small empty">No notes {isToday ? "yet today" : "this day"}. Reps can add one when logging a call.</p>
             ) : (
               <ul className="feed">
                 {notes.map((n) => (
                   <li key={n.id} className="note">
                     <div className="eod-head">
                       <b>{name(n.rep as never)}</b>
-                      <span className="muted small">{relativeTime(n.created_at)}</span>
+                      <span className="muted small">
+                        {isToday
+                          ? relativeTime(n.created_at)
+                          : new Date(n.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ })}
+                      </span>
                     </div>
                     <p className="note-tags">
                       {n.client_id && clientNames.get(n.client_id) && (

@@ -139,6 +139,9 @@ begin
     'objections', coalesce((select jsonb_agg(x) from (
                   select o.label, count(*) n from cur c join options o on o.id = c.objection_id
                   group by o.label order by count(*) desc, o.label limit 8) x), '[]'::jsonb),
+    'daily',   coalesce((select jsonb_agg(x order by x.day) from (
+                  select lt::date as day, count(*) as pickups, count(*) filter (where is_success) as booked
+                  from cur group by 1) x), '[]'::jsonb),
     'reps',    coalesce((select jsonb_agg(to_jsonb(r) order by r.booked desc, r.pickups desc) from reps r), '[]'::jsonb),
     'clients', coalesce((select jsonb_agg(to_jsonb(c) order by c.sort, c.name) from clients_out c
                          where c.id is not null or c.pickups > 0), '[]'::jsonb)

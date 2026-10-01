@@ -96,13 +96,19 @@ Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheet
   refreshes itself about every hour.
 - The links contain a secret key. **Reset links** if one leaks; old links and connected sheets stop working.
 
+## Dashboard vs Reports
+- **Dashboard = one day, live.** Today's numbers, who is logging, who has gone quiet (no call in 45+ min), who has signed
+  off and hit target, today's blockers, EOD notes and call notes. Use ← Previous day to look back at any single day.
+- **Reports = over time.** Everything below.
+
 ## Reports
-Dashboard → **Reports** (managers and owner). Pick 7, 30 or 90 days and filter by client or rep. Every number is compared with the previous period of the same length.
+**Reports** (managers and owner). Pick 7, 30 or 90 days and filter by client or rep. Every number is compared with the previous period of the same length.
 - **Key findings:** plain-English takeaways (best and weakest calling windows, where calls die, who to coach).
 - **When calls get picked up and booked:** weekday × hour heatmap (toggle pick-ups / book rate), best time slots, by hour, by day.
 - **Rep scorecard:** pick-ups, booked, book rate and trend, average dials, days on target, EODs done, biggest leak vs the team, top objection.
 - **Where each rep loses calls:** stage-by-stage share vs the team, with outliers highlighted.
-- **Client results:** funnel per client, biggest drop, best rep, best hour, top objections.
+- **Daily trend, where calls die, top objections.**
+- **Client results:** funnel per client, biggest drop, best rep, best hour, top objections, plus a **Rep × client** table.
 
 Patterns get reliable at roughly 100+ pick-ups in the range; the page says so when data is thin.
 
