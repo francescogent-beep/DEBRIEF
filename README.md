@@ -63,7 +63,8 @@ debrief/
    - `1` = Booked (saves instantly)
    - Otherwise pick the outcome, then **where it died** (`1`–`5`, or `S` to skip), tap an objection if there was one, **Enter** to save.
    - Made a mistake? Hit **Undo** or the × next to the call (works for 15 minutes).
-4. End of day → **End of day** tab → what worked, what to improve, blockers, energy → **Sign off the day**.
+4. Going on a break? Hit **⏸ Pause for a break** (or `P`), then **Resume** when back. Logging a call or signing off also ends the break.
+5. End of day → **End of day** tab → what worked, what to improve, blockers, energy → **Sign off the day**.
 
 ## Default 7FigureRia setup
 - **Outcomes:** Booked · Callback · Not interested · Not qualified · Hung up
@@ -97,7 +98,7 @@ Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheet
 - The links contain a secret key. **Reset links** if one leaks; old links and connected sheets stop working.
 
 ## Dashboard vs Reports
-- **Dashboard = one day, live.** Today's numbers, who is logging, who has gone quiet (no call in 45+ min), who has signed
+- **Dashboard = one day, live.** Today's numbers, who is logging, who is on a break, who has gone quiet (no call in 45+ min), who has signed
   off and hit target, today's blockers, EOD notes and call notes. Use ← Previous day to look back at any single day.
 - **Reports = over time.** Everything below.
 
@@ -108,7 +109,7 @@ Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheet
 - **Rep scorecard:** pick-ups, booked, book rate and trend, average dials, days on target, EODs done, biggest leak vs the team, top objection.
 - **Where each rep loses calls:** stage-by-stage share vs the team, with outliers highlighted.
 - **Daily trend, where calls die, top objections.**
-- **Time between pick-ups:** typical gap, 30+ minute gaps per day, typical gap by hour, and per rep: first/last pick-up and pick-ups per hour.
+- **Time between pick-ups:** break time (Pause button) is taken out. Typical gap, 30+ minute gaps per day, typical gap by hour, and per rep: first/last pick-up and pick-ups per hour.
 - **Client results:** funnel per client, biggest drop, best rep, best hour, top objections, plus a **Rep × client** table.
 
 Patterns get reliable at roughly 100+ pick-ups in the range; the page says so when data is thin.

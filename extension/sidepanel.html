@@ -70,6 +70,18 @@
       <div class="stat"><b id="stat-rate">–</b><span>book rate</span></div>
     </div>
 
+    <button class="btn ghost small break-btn" id="break-btn" type="button" title="Going on a break? Pause so the gap isn't counted.">
+      ⏸ Pause for a break <kbd>P</kbd>
+    </button>
+    <div id="break-banner" class="break-banner" hidden role="status">
+      <div>
+        <b>On break</b>
+        <span id="break-time" class="break-time">0:00</span>
+        <p class="muted small">Not counted as time between pick-ups.</p>
+      </div>
+      <button class="btn primary small" id="break-resume" type="button">▶ Resume <kbd>P</kbd></button>
+    </div>
+
     <nav class="tabs">
       <button class="tab active" data-tab="log">Log call</button>
       <button class="tab" data-tab="eod">End of day</button>

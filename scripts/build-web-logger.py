@@ -6,7 +6,7 @@ in extension/ so the web version (for Safari, Firefox and phones) stays identica
 
     python3 scripts/build-web-logger.py
 """
-import json, pathlib, shutil
+import json, pathlib, shutil, zipfile
 
 root = pathlib.Path(__file__).resolve().parent.parent
 src = root / "extension"
@@ -50,3 +50,13 @@ manifest = {
 }
 (out / "manifest.webmanifest").write_text(json.dumps(manifest, indent=2) + "\n")
 print(f"Web logger written to {out.relative_to(root)}")
+
+# Downloadable copy of the Chrome extension for reps: /downloads/debrief-extension.zip
+dl = root / "dashboard" / "public" / "downloads"
+dl.mkdir(parents=True, exist_ok=True)
+zip_path = dl / "debrief-extension.zip"
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
+    for f in sorted(src.rglob("*")):
+        if f.is_file() and not f.name.startswith("."):
+            z.write(f, pathlib.Path("debrief-extension") / f.relative_to(src))
+print(f"Extension download written to {zip_path.relative_to(root)}")

@@ -39,6 +39,8 @@ type Stats = {
 };
 
 const QUIET_MIN = 45; // no call logged for this long during a shift = "quiet"
+const BREAK_MAX_MS = 2 * 60 * 60 * 1000; // a forgotten break counts for at most 2h
+const durTxt = (mins: number) => (mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`);
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Start of a calendar day (YYYY-MM-DD) in the team timezone, as a UTC instant.
@@ -106,7 +108,7 @@ export default async function Dashboard({
   }
   const stats = statsData as Stats;
 
-  const [{ data: eods }, { data: notes }] = await Promise.all([
+  const [{ data: eods }, { data: notes }, { data: breakRows }] = await Promise.all([
     supabase
       .from("eods")
       .select(
@@ -124,6 +126,12 @@ export default async function Dashboard({
       .lt("created_at", to.toISOString())
       .order("created_at", { ascending: false })
       .limit(50),
+    supabase
+      .from("breaks")
+      .select("rep_id,started_at,ended_at")
+      .eq("workspace_id", id)
+      .gte("started_at", new Date(from.getTime() - BREAK_MAX_MS).toISOString())
+      .lt("started_at", to.toISOString()),
   ]);
 
   const labels = new Map<string, Opt>();
@@ -149,16 +157,35 @@ export default async function Dashboard({
   const eodByRep = new Map((eods ?? []).map((e) => [e.rep_id as string, e]));
   const { conversations, booked } = stats.totals;
 
+  // Breaks: effective end = ended_at, or now while running (capped at 2h if forgotten).
+  const now = Date.now();
+  const breaks = (breakRows ?? []).map((b) => {
+    const s = Date.parse(b.started_at as string);
+    const e = b.ended_at ? Date.parse(b.ended_at as string) : Math.min(now, s + BREAK_MAX_MS);
+    return { rep: b.rep_id as string, s, e, open: !b.ended_at && now - s < BREAK_MAX_MS };
+  });
+  const breakMin = (rep: string) =>
+    Math.round(
+      breaks
+        .filter((b) => b.rep === rep)
+        .reduce((a, b) => a + Math.max(0, Math.min(b.e, to.getTime()) - Math.max(b.s, from.getTime())), 0) / 60_000
+    );
+  const openBreak = (rep: string) => (isToday ? breaks.find((b) => b.rep === rep && b.open) : undefined);
+  const lastBreakEnd = (rep: string) => Math.max(0, ...breaks.filter((b) => b.rep === rep && !b.open).map((b) => b.e));
+
   // Team list: every rep, plus managers who logged calls.
-  type Status = { key: "done" | "live" | "quiet" | "idle" | "none"; text: string; order: number };
+  type Status = { key: "done" | "live" | "quiet" | "idle" | "none" | "break"; text: string; order: number };
   const statusOf = (r: RepStat): Status => {
     if (eodByRep.has(r.user_id)) return { key: "done", text: "Signed off", order: 3 };
+    const ob = openBreak(r.user_id);
+    if (ob) return { key: "break", text: `On break ${durTxt(Math.max(1, Math.round((now - ob.s) / 60_000)))}`, order: 1 };
     if (!r.last_log) return { key: "idle", text: isToday ? "No calls yet" : "No calls", order: 2 };
     if (!isToday) return { key: "none", text: "No sign-off", order: 1 };
-    const mins = Math.round((Date.now() - new Date(r.last_log).getTime()) / 60_000);
+    // Quiet = no call since the last call or the end of the last break, whichever is later.
+    const since = Math.max(new Date(r.last_log).getTime(), lastBreakEnd(r.user_id));
+    const mins = Math.round((now - since) / 60_000);
     if (mins < QUIET_MIN) return { key: "live", text: "Logging", order: 0 };
-    const quiet = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
-    return { key: "quiet", text: `Quiet ${quiet}`, order: 1 };
+    return { key: "quiet", text: `Quiet ${durTxt(mins)}`, order: 1 };
   };
   const team = stats.reps
     .filter((r) => r.role === "rep" || r.conversations > 0)
@@ -259,6 +286,7 @@ export default async function Dashboard({
                     <th className="num">Book rate</th>
                     <th className="num">Dials</th>
                     <th>Target</th>
+                    <th className="num">Breaks</th>
                     <th>Last call</th>
                   </tr>
                 </thead>
@@ -286,6 +314,12 @@ export default async function Dashboard({
                         ) : (
                           <span className="muted">—</span>
                         )}
+                      </td>
+                      <td className="num">
+                        {(() => {
+                          const m = breakMin(r.user_id);
+                          return m ? durTxt(m) : <span className="muted">—</span>;
+                        })()}
                       </td>
                       <td className="muted">{r.last_log ? (isToday ? relativeTime(r.last_log) : new Date(r.last_log).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ })) : "—"}</td>
                     </tr>

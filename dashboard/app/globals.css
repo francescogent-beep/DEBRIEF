@@ -323,3 +323,5 @@ a.ws-row:hover { border-color: var(--ink-2); }
 .gap-stats b { font-size: 22px; }
 .gap-stats small { font-size: 12px; font-weight: 500; color: var(--muted); }
 .grid-2.inner { gap: 24px; margin-bottom: 4px; }
+.status-break { color: #a86b00; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .status-break { color: #e8b44c; } }

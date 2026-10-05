@@ -129,6 +129,8 @@ export const db = {
       body: row,
       headers: { Prefer: "return=representation,resolution=merge-duplicates" },
     }),
+  update: (table, query, row) =>
+    request("PATCH", `/rest/v1/${table}?${query}`, { body: row, headers: { Prefer: "return=representation" } }),
   remove: (table, query) => request("DELETE", `/rest/v1/${table}?${query}`),
   rpc: (fn, args) => request("POST", `/rest/v1/rpc/${fn}`, { body: args }),
 };

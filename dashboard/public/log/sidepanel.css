@@ -226,3 +226,17 @@ kbd {
 /* Web version (not inside the Chrome extension): keep the narrow panel look */
 html.web body { max-width: 440px; margin: 0 auto; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
 html.web .toast { left: 50%; right: auto; width: min(416px, calc(100vw - 24px)); transform: translateX(-50%); }
+
+/* Breaks */
+.break-btn { display: block; width: 100%; margin: -4px 0 10px; }
+.break-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  margin: -4px 0 10px; padding: 10px 12px; border-radius: 10px;
+  background: var(--warn-soft, #fff4d6); border: 1px solid var(--warn-line, #f0d58a); color: var(--ink);
+}
+.break-banner p { margin: 2px 0 0; }
+.break-time { font-variant-numeric: tabular-nums; font-weight: 700; margin-left: 6px; }
+.on-break #step-outcome { opacity: .45; }
+@media (prefers-color-scheme: dark) {
+  .break-banner { background: #3a3013; border-color: #6b5a22; }
+}

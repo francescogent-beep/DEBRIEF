@@ -21,6 +21,7 @@ const state = {
   clientId: null,        // who the rep is calling for right now
   dialClients: [],       // client ids shown in the EOD dials section
   manualDials: new Set(), // clients the rep added to the dials section by hand
+  breakOpen: null,       // { id, started_at } while the rep is on a break
 };
 const CLIENT_KEY = (ws) => `debrief.client.${ws}`;
 const NO_CLIENT = "none";
@@ -133,8 +134,85 @@ async function loadWorkspace() {
   resetDraft();
   await flushQueue();
   await loadToday();
+  await loadBreak();
   await loadEod();
 }
+
+// ---------------------------------------------------------------------------
+// Breaks: Pause / Resume. Break time is taken out of "time between pick-ups"
+// in the reports, and managers see "On break" on the dashboard.
+// ---------------------------------------------------------------------------
+const BREAK_MAX_MS = 2 * 60 * 60 * 1000; // a forgotten break counts for at most 2h
+
+async function loadBreak() {
+  state.breakOpen = null;
+  try {
+    const [open] = await db.select(
+      "breaks",
+      `select=id,started_at&workspace_id=eq.${state.wsId}&rep_id=eq.${currentUser().id}` +
+        `&ended_at=is.null&order=started_at.desc&limit=1`
+    );
+    if (open && Date.now() - new Date(open.started_at).getTime() > BREAK_MAX_MS) {
+      // Forgotten break: close it at the 2h cap.
+      const end = new Date(new Date(open.started_at).getTime() + BREAK_MAX_MS).toISOString();
+      await db.update("breaks", `id=eq.${open.id}`, { ended_at: end }).catch(() => {});
+    } else if (open) {
+      state.breakOpen = open;
+    }
+  } catch { /* breaks are optional — never block logging */ }
+  renderBreak();
+}
+
+async function startBreak() {
+  if (state.breakOpen) return;
+  const started_at = new Date().toISOString();
+  const b = { id: null, started_at };
+  state.breakOpen = b;
+  renderBreak();
+  b.saving = db
+    .insert("breaks", { workspace_id: state.wsId, rep_id: currentUser().id, started_at })
+    .then(([row]) => { b.id = row.id; })
+    .catch((err) => {
+      if (state.breakOpen === b) state.breakOpen = null;
+      renderBreak();
+      toast(`Couldn't start the break: ${err.message}`);
+    });
+}
+
+async function endBreak({ quiet = false } = {}) {
+  const b = state.breakOpen;
+  if (!b) return;
+  state.breakOpen = null;
+  renderBreak();
+  const ended_at = new Date().toISOString();
+  const mins = Math.max(1, Math.round((Date.parse(ended_at) - Date.parse(b.started_at)) / 60000));
+  try {
+    if (b.saving) await b.saving;
+    if (b.id) await db.update("breaks", `id=eq.${b.id}`, { ended_at });
+    if (!quiet) toast(`Back to it 💪 Break: ${mins} min`);
+  } catch (err) {
+    toast(`Couldn't end the break: ${err.message}`);
+  }
+}
+
+function toggleBreak() {
+  return state.breakOpen ? endBreak() : startBreak();
+}
+
+function renderBreak() {
+  const on = !!state.breakOpen;
+  $("#break-banner").hidden = !on;
+  $("#break-btn").hidden = on;
+  $("#screen-main").classList.toggle("on-break", on);
+  if (on) {
+    const secs = Math.max(0, Math.floor((Date.now() - Date.parse(state.breakOpen.started_at)) / 1000));
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), s = secs % 60;
+    $("#break-time").textContent = h ? `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}` : `${m}:${String(s).padStart(2, "0")}`;
+  }
+}
+setInterval(() => { if (state.breakOpen) renderBreak(); }, 1000);
+$("#break-btn").addEventListener("click", () => startBreak());
+$("#break-resume").addEventListener("click", () => endBreak());
 
 // ---------------------------------------------------------------------------
 // Clients: who the rep is calling for. Required when the workspace has any.
@@ -349,6 +427,8 @@ $("#save-log").addEventListener("click", () => saveLog());
 $("#cancel-log").addEventListener("click", () => resetDraft());
 
 async function saveLog() {
+  // Logging a call means the break is over.
+  if (state.breakOpen) endBreak({ quiet: true });
   const d = state.draft;
   const row = {
     workspace_id: state.wsId,
@@ -733,6 +813,7 @@ $("#eod-form").addEventListener("submit", async (e) => {
   const btn = $("#eod-submit");
   btn.disabled = true;
   try {
+    await endBreak({ quiet: true });
     await db.upsert("eods", row, "workspace_id,rep_id,day");
     await loadToday();       // new shift starts now: counters reset
     await loadEod();
@@ -758,6 +839,8 @@ document.addEventListener("keydown", (e) => {
     return saveLog();
   }
   if (typing) return;
+
+  if (e.key.toLowerCase() === "p" && state.step === "outcome") return toggleBreak();
 
   const n = Number(e.key);
   if (n >= 1 && n <= 9 && state.step === "outcome" && needsClient()) return promptClient();

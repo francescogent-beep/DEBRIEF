@@ -60,6 +60,7 @@ type Report = {
   objections: Obj[];
   daily: { day: string; pickups: number; booked: number }[];
   gaps?: {
+    break_minutes?: number | null;
     median: number | null;
     buckets: { b: number; n: number }[];
     by_hour: { hour: number; median: number; n: number }[];
@@ -80,6 +81,8 @@ type GapRep = {
   avg_first: string | null;
   avg_last: string | null;
   per_hour: number | null;
+  break_per_day?: number | null;
+  breaks?: number;
 };
 type RepClient = {
   user_id: string;
@@ -710,9 +713,10 @@ export default async function Reports({
               <section className="card">
                 <h2>Time between pick-ups</h2>
                 <p className="muted small">
-                  Minutes from one pick-up to the next for the same rep on the same day, across all clients. Reps only
-                  log answered calls, so this reflects dialing pace and pick-up luck together. Gaps of 30+ minutes
-                  usually mean breaks, admin or not dialing.
+                  Minutes from one pick-up to the next for the same rep on the same day, across all clients. Time on
+                  a break (the Pause button in the extension) is taken out. Reps only log answered calls, so this
+                  reflects dialing pace and pick-up luck together; gaps of 30+ minutes usually mean admin, unlogged
+                  breaks or not dialing.
                 </p>
                 <div className="gap-stats">
                   <div>
@@ -778,6 +782,7 @@ export default async function Reports({
                         <th className="num">First pick-up</th>
                         <th className="num">Last pick-up</th>
                         <th className="num">Pick-ups / hour</th>
+                        <th className="num">Breaks / day</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -800,13 +805,17 @@ export default async function Reports({
                             <td className="num">{clockTxt(g.avg_first)}</td>
                             <td className="num">{clockTxt(g.avg_last)}</td>
                             <td className="num">{g.per_hour ?? "—"}</td>
+                            <td className="num">{g.break_per_day ? minTxt(g.break_per_day) : <span className="muted">none logged</span>}</td>
                           </tr>
                         );
                       })}
                     </tbody>
                   </table>
                 </div>
-                <p className="muted small">First and last pick-up are averages across the days each rep logged calls.</p>
+                <p className="muted small">
+                  First and last pick-up are averages across the days each rep logged calls. Pick-ups per hour leaves out
+                  break time.
+                </p>
               </section>
             )}
 
