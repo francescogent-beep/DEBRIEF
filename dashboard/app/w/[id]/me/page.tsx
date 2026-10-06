@@ -3,7 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/supabase-server";
 import { TopBar } from "@/components/topbar";
 import { FilterSelect } from "@/components/filter-select";
-import { TEAM_TZ, startOfDay, tzDate } from "@/lib/time";
+import { PeriodPicker } from "@/components/period-picker";
+import { TEAM_TZ, tzDate } from "@/lib/time";
+import { PRESETS, resolvePeriod, rangeLabel } from "@/lib/period";
 
 export const dynamic = "force-dynamic";
 
@@ -57,11 +59,6 @@ type RepReport = {
   team: Team;
 };
 
-const RANGES = [
-  { key: "7d", label: "7 days", days: 7 },
-  { key: "30d", label: "30 days", days: 30 },
-  { key: "90d", label: "90 days", days: 90 },
-] as const;
 const PAGE = 50;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -98,11 +95,11 @@ export default async function MyStats({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ range?: string; outcome?: string; page?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string; outcome?: string; page?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const range = RANGES.find((r) => r.key === sp.range) ?? RANGES[0];
+  const range = resolvePeriod(sp, "7d");
   const outcomeFilter = sp.outcome && UUID.test(sp.outcome) ? sp.outcome : null;
   const page = Math.max(1, Number(sp.page) || 1);
 
@@ -117,8 +114,9 @@ export default async function MyStats({
   if (!ws) notFound();
   const role = membership?.role === "rep" ? "rep" : "manager";
 
-  const from = startOfDay(TEAM_TZ, range.days - 1);
-  const to = new Date(startOfDay(TEAM_TZ, 0).getTime() + 86_400_000);
+  const { from, to } = range;
+  const periodText = range.key === "custom" ? range.label : `${range.label} (${rangeLabel(range.fromDay, range.toDay)})`;
+  const inPeriod = range.key === "custom" ? `between ${range.label}` : range.label.toLowerCase();
 
   let calls = supabase
     .from("call_logs")
@@ -158,7 +156,13 @@ export default async function MyStats({
   const outcomes = (opts ?? []).filter((o) => o.kind === "outcome");
   const qs = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams();
-    const merged: Record<string, string | null> = { range: range.key, outcome: outcomeFilter, ...patch };
+    const merged: Record<string, string | null> = {
+      range: range.key === "custom" ? null : range.key,
+      from: range.key === "custom" ? range.fromDay : null,
+      to: range.key === "custom" ? range.toDay : null,
+      outcome: outcomeFilter,
+      ...patch,
+    };
     for (const [k, v] of Object.entries(merged)) if (v) next.set(k, v);
     return `?${next.toString()}`;
   };
@@ -253,23 +257,25 @@ export default async function MyStats({
 
   return (
     <>
-      <TopBar workspace={ws} active="me" role={role}>
-        <nav className="range" aria-label="Time range">
-          {RANGES.map((o) => (
-            <Link key={o.key} href={qs({ range: o.key, page: null })} className={o.key === range.key ? "on" : ""}>
-              {o.label}
-            </Link>
-          ))}
-        </nav>
-      </TopBar>
+      <TopBar workspace={ws} active="me" role={role} />
 
       <main className="page reports me-page">
         <div className="report-head">
           <div>
             <h1 className="page-title">{first ? `${first}'s stats` : "My stats"}</h1>
             <p className="muted small">
-              Last {range.days} days · compared with the team average (all reps, per day worked) · only you and your managers see your numbers
+              {periodText} · compared with the team average (all reps, per day worked) · only you and your managers see your numbers
             </p>
+          </div>
+          <div className="filters">
+            <PeriodPicker
+              key={`${range.fromDay}-${range.toDay}`}
+              presets={PRESETS}
+              current={range.key}
+              fromDay={range.fromDay}
+              toDay={range.toDay}
+              maxDay={tzDate(TEAM_TZ)}
+            />
           </div>
         </div>
 
@@ -345,7 +351,7 @@ export default async function MyStats({
 
         {m.pickups === 0 && m.eods === 0 ? (
           <section className="card">
-            <p className="muted empty">No calls logged in the last {range.days} days yet.</p>
+            <p className="muted empty">No calls logged {inPeriod} yet.</p>
           </section>
         ) : (
           <>
@@ -507,7 +513,7 @@ export default async function MyStats({
             <div>
               <h2>Your calls</h2>
               <p className="muted small">
-                {count ?? 0} call{count === 1 ? "" : "s"} in the last {range.days} days
+                {count ?? 0} call{count === 1 ? "" : "s"} {inPeriod}
                 {outcomeFilter ? ` · ${labels.get(outcomeFilter)?.label}` : ""}. To fix a mistake, use Undo or × in the
                 extension within 15 minutes.
               </p>

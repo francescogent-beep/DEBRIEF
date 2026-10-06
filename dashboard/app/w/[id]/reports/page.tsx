@@ -4,7 +4,9 @@ import { requireUser } from "@/lib/supabase-server";
 import { TopBar } from "@/components/topbar";
 import { FilterSelect } from "@/components/filter-select";
 import { BarList, DailyChart } from "@/components/charts";
-import { TEAM_TZ, startOfDay, tzDate } from "@/lib/time";
+import { PeriodPicker } from "@/components/period-picker";
+import { TEAM_TZ, tzDate } from "@/lib/time";
+import { PRESETS, resolvePeriod, prevLabel, dayList, rangeLabel as rangeLabelShort } from "@/lib/period";
 
 export const dynamic = "force-dynamic";
 
@@ -99,11 +101,6 @@ type RepClient = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const RANGE_OPTS = [
-  { key: "7d", label: "7 days", days: 7 },
-  { key: "30d", label: "30 days", days: 30 },
-  { key: "90d", label: "90 days", days: 90 },
-] as const;
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
@@ -162,11 +159,11 @@ export default async function Reports({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ range?: string; client?: string; rep?: string; metric?: string }>;
+  searchParams: Promise<{ range?: string; from?: string; to?: string; client?: string; rep?: string; metric?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const range = RANGE_OPTS.find((r) => r.key === sp.range) ?? RANGE_OPTS[1];
+  const range = resolvePeriod(sp, "30d");
   const clientFilter = sp.client && UUID.test(sp.client) ? sp.client : null;
   const repFilter = sp.rep && UUID.test(sp.rep) ? sp.rep : null;
   const metric = sp.metric === "rate" ? "rate" : "pickups";
@@ -176,8 +173,7 @@ export default async function Reports({
   const { data: ws } = await supabase.from("workspaces").select("id,name").eq("id", id).single();
   if (!ws) notFound();
 
-  const from = startOfDay(TEAM_TZ, range.days - 1);
-  const to = new Date(startOfDay(TEAM_TZ, 0).getTime() + 86_400_000);
+  const { from, to } = range;
 
   const [{ data, error }, { data: clientRows }, { data: memberRows }, { data: statsData }] = await Promise.all([
     supabase.rpc("workspace_report", {
@@ -235,7 +231,9 @@ export default async function Reports({
   const qs = (patch: Record<string, string | null>) => {
     const next = new URLSearchParams();
     const merged: Record<string, string | null> = {
-      range: range.key,
+      range: range.key === "custom" ? null : range.key,
+      from: range.key === "custom" ? range.fromDay : null,
+      to: range.key === "custom" ? range.toDay : null,
       client: clientFilter,
       rep: repFilter,
       metric: metric === "rate" ? "rate" : null,
@@ -354,7 +352,7 @@ export default async function Reports({
   if (bookDelta !== null) {
     findings.push(
       <>
-        Book rate is <b>{pctTxt(t.booked, t.pickups)}</b>, <Delta pts={bookDelta} /> vs the previous {range.days} days.
+        Book rate is <b>{pctTxt(t.booked, t.pickups)}</b>, <Delta pts={bookDelta} /> vs {prevLabel(range)}.
       </>
     );
   }
@@ -408,8 +406,7 @@ export default async function Reports({
 
   // Daily trend with empty days filled in so gaps are visible.
   const byDay = new Map((r.daily ?? []).map((d) => [d.day, d]));
-  const trendDays = Array.from({ length: range.days }, (_, i) => {
-    const day = tzDate(TEAM_TZ, range.days - 1 - i);
+  const trendDays = dayList(range.fromDay, range.toDay).map((day) => {
     const d = byDay.get(day);
     return { day, conversations: d?.pickups ?? 0, booked: d?.booked ?? 0 };
   });
@@ -420,29 +417,32 @@ export default async function Reports({
   );
 
   const thin = t.pickups < 100;
+  const rangeText = rangeLabelShort(range.fromDay, range.toDay);
   const zone = tzName();
 
   return (
     <>
-      <TopBar workspace={ws} active="reports">
-        <nav className="range" aria-label="Time range">
-          {RANGE_OPTS.map((o) => (
-            <Link key={o.key} href={qs({ range: o.key })} className={o.key === range.key ? "on" : ""}>
-              {o.label}
-            </Link>
-          ))}
-        </nav>
-      </TopBar>
+      <TopBar workspace={ws} active="reports" />
 
       <main className="page reports">
         <div className="report-head">
           <div>
             <h1 className="page-title">Reports</h1>
             <p className="muted small">
-              Last {range.days} days · times in {zone} · compared with the {range.days} days before
+              {range.label}
+              {range.key !== "custom" ? ` (${rangeText})` : ""} · times in {zone} · compared with{" "}
+              {prevLabel(range)}
             </p>
           </div>
           <div className="filters">
+            <PeriodPicker
+              key={`${range.fromDay}-${range.toDay}`}
+              presets={PRESETS}
+              current={range.key}
+              fromDay={range.fromDay}
+              toDay={range.toDay}
+              maxDay={tzDate(TEAM_TZ)}
+            />
             {clientOpts.length > 0 && (
               <FilterSelect
                 param="client"
@@ -826,7 +826,7 @@ export default async function Reports({
             <section className="card">
               <h2>Rep scorecard</h2>
               <p className="muted small">
-                Trend = change in book rate vs the previous {range.days} days. Biggest leak = the stage where the rep
+                Trend = change in book rate vs {prevLabel(range)}. Biggest leak = the stage where the rep
                 loses a bigger share of calls than the team.
               </p>
               <div className="table-wrap">

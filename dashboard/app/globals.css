@@ -372,3 +372,13 @@ details.day-item > summary:hover { background: var(--line); }
 }
 .kpi b small.inline-small { display: inline; font-size: 13px; color: var(--muted); }
 .me-page .report-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+/* Period picker */
+.period-picker { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.date-range { display: flex; align-items: center; gap: 6px; }
+.date-range input[type="date"] {
+  font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; width: auto;
+}
+.date-range .btn[disabled] { opacity: .5; cursor: default; }
+@media (prefers-color-scheme: dark) { .date-range input[type="date"] { color-scheme: dark; } }

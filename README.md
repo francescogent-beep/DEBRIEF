@@ -110,7 +110,7 @@ Reps only ever see their own numbers plus anonymous team averages. Managers have
 - **Reports = over time.** Everything below.
 
 ## Reports
-**Reports** (managers and owner). Pick 7, 30 or 90 days and filter by client or rep. Every number is compared with the previous period of the same length.
+**Reports** (managers and owner). Pick a period (today, yesterday, this/last week, this/last month, last 7/30/90 days) or any custom from → to dates, and filter by client or rep. My stats has the same period picker. Every number is compared with the same number of days just before.
 - **Key findings:** plain-English takeaways (best and weakest calling windows, where calls die, who to coach).
 - **When calls get picked up and booked:** weekday × hour heatmap (toggle pick-ups / book rate), best time slots, by hour, by day.
 - **Rep scorecard:** pick-ups, booked, book rate and trend, average dials, days on target, EODs done, biggest leak vs the team, top objection.
