@@ -108,6 +108,7 @@ function renderWorkspaceSelect() {
   sel.disabled = state.memberships.length < 2;
   const isManager = state.memberships.find((m) => m.workspace.id === state.wsId)?.role === "manager";
   $("#menu-dashboard").hidden = !(isManager && DASHBOARD_URL);
+  $("#menu-mystats").hidden = !DASHBOARD_URL;
 }
 
 async function loadWorkspace() {
@@ -325,6 +326,7 @@ $("#menu").addEventListener("click", async (e) => {
   const action = e.target.dataset.action;
   if (action === "join") { $("#join-back").hidden = false; show("join"); }
   if (action === "dashboard") chrome.tabs.create({ url: DASHBOARD_URL });
+  if (action === "mystats") chrome.tabs.create({ url: `${DASHBOARD_URL}/w/${state.wsId}/me` });
   if (action === "signout") doSignOut();
 });
 $("#ws-select").addEventListener("change", async (e) => {
@@ -818,7 +820,7 @@ $("#eod-form").addEventListener("submit", async (e) => {
     await loadToday();       // new shift starts now: counters reset
     await loadEod();
     switchTab("log");
-    toast("Day closed 👋 Counters reset for your next shift");
+    toast("Day closed 👋 See how you did in ⋯ → My stats");
   } catch (err) {
     message("#eod-msg", err.message);
   } finally {

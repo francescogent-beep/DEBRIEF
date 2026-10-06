@@ -325,3 +325,50 @@ a.ws-row:hover { border-color: var(--ink-2); }
 .grid-2.inner { gap: 24px; margin-bottom: 4px; }
 .status-break { color: #a86b00; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .status-break { color: #e8b44c; } }
+
+/* My stats (rep page) */
+.today-card { padding-top: 14px; padding-bottom: 14px; }
+.today-row { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+.today-nums { margin: 2px 0 0; font-size: 18px; }
+.today-nums b { font-size: 24px; }
+.goal { flex: 1; min-width: 220px; max-width: 420px; }
+.goal-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+.goal-label b { color: var(--ink); }
+.goal-track { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; margin: 4px 0; }
+.goal-track i { display: block; height: 100%; background: var(--ink); border-radius: 99px; }
+.goal-track i.done { background: var(--good); }
+.kpi small { display: block; margin-top: 4px; font-size: 12px; font-weight: 500; }
+.vs-list { list-style: none; padding: 0; margin: 8px 0 0; display: grid; gap: 8px; }
+.vs-list li { display: grid; grid-template-columns: 110px 1fr 120px; align-items: center; gap: 10px; font-size: 13px; }
+.vs-track { display: grid; gap: 3px; }
+.vs-track i { display: block; height: 8px; border-radius: 4px; min-width: 2px; }
+.vs-track i.me, .sw.me { background: var(--ink); }
+.vs-track i.me.worse { background: var(--bad); }
+.vs-track i.team, .sw.team { background: var(--line); }
+.vs-list .bl-value { text-align: right; }
+.vs-list em { font-style: normal; color: var(--muted); font-size: 12px; }
+.legend-row { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.legend-row .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-left: 8px; }
+.obj-list { margin: 6px 0 0; padding-left: 20px; font-size: 13px; line-height: 1.8; }
+.day-list { margin-top: 8px; font-size: 13px; }
+.day-row { display: grid; grid-template-columns: 1.4fr repeat(4, .8fr) 1fr .8fr; gap: 8px; align-items: center; padding: 9px 6px; border-bottom: 1px solid var(--line); }
+.day-head-row { font-size: 12px; color: var(--muted); font-weight: 600; }
+.day-row .num { text-align: right; }
+details.day-item > summary { cursor: pointer; list-style: none; }
+details.day-item > summary::-webkit-details-marker { display: none; }
+details.day-item > summary b::before { content: "▸ "; color: var(--muted); }
+details.day-item[open] > summary b::before { content: "▾ "; }
+details.day-item > summary:hover { background: var(--line); }
+.day-notes { padding: 6px 10px 12px 22px; border-bottom: 1px solid var(--line); }
+.day-notes p { margin: 4px 0; }
+.calls-table td { vertical-align: top; }
+.note-cell { max-width: 360px; white-space: pre-wrap; }
+.nowrap { white-space: nowrap; }
+.pager { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; }
+@media (max-width: 640px) {
+  .day-row { grid-template-columns: 1.3fr .7fr .7fr .8fr 1fr; }
+  .day-row > :nth-child(5), .day-row > :nth-child(7) { display: none; }
+  .vs-list li { grid-template-columns: 90px 1fr 96px; }
+}
+.kpi b small.inline-small { display: inline; font-size: 13px; color: var(--muted); }
+.me-page .report-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }

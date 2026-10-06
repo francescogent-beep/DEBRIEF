@@ -25,6 +25,7 @@ export function FilterSelect({
           const next = new URLSearchParams(params.toString());
           if (e.target.value) next.set(param, e.target.value);
           else next.delete(param);
+          next.delete("page"); // a new filter starts from the first page
           router.push(`?${next.toString()}`);
         }}
       >

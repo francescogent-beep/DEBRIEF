@@ -91,6 +91,9 @@ export default async function Dashboard({
   });
 
   if (error) {
+    // Reps (not managers) have their own page.
+    const { data: isMember } = await supabase.rpc("is_member", { ws: id });
+    if (isMember) redirect(`/w/${id}/me`);
     return (
       <>
         <TopBar workspace={ws} active="dashboard" />

@@ -97,6 +97,13 @@ Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheet
   refreshes itself about every hour.
 - The links contain a secret key. **Reset links** if one leaks; old links and connected sheets stop working.
 
+## My stats (for reps)
+Every rep can open **⋯ → 📊 My stats** in the extension (or sign in on the dashboard website with the same email and
+password). It shows today's progress toward the target, their numbers vs the team average (pick-ups and booked per day,
+book rate, days on target, dials, time between pick-ups), a personal "Your focus" list, where their calls end vs the team,
+their best hours and top objections, a day-by-day review with their EOD notes, and every call they logged.
+Reps only ever see their own numbers plus anonymous team averages. Managers have the same page for themselves.
+
 ## Dashboard vs Reports
 - **Dashboard = one day, live.** Today's numbers, who is logging, who is on a break, who has gone quiet (no call in 45+ min), who has signed
   off and hit target, today's blockers, EOD notes and call notes. Use ← Previous day to look back at any single day.

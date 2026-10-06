@@ -29,10 +29,9 @@ export default async function Home() {
   // Owner sees every workspace; everyone else sees their own.
   const { data: workspaces } = await supabase.from("workspaces").select("id,name,created_at").order("created_at");
   const list = (workspaces ?? []).map((w) => ({ ...w, role: roles.get(w.id) ?? (isOwner ? "owner" : "rep") }));
-  const managed = list.filter((w) => w.role !== "rep");
-
-  // Managers with exactly one team go straight to it.
-  if (!isOwner && managed.length === 1 && list.length === 1) redirect(`/w/${managed[0].id}`);
+  
+  // Anyone with exactly one team goes straight to it (reps to their own stats).
+  if (!isOwner && list.length === 1) redirect(list[0].role === "rep" ? `/w/${list[0].id}/me` : `/w/${list[0].id}`);
 
   return (
     <>
@@ -47,10 +46,10 @@ export default async function Home() {
               {list.map((w) => (
                 <li key={w.id}>
                   {w.role === "rep" ? (
-                    <div className="ws-row">
+                    <Link href={`/w/${w.id}/me`} className="ws-row">
                       <span>{w.name}</span>
-                      <span className="tag">rep</span>
-                    </div>
+                      <span className="tag">rep · my stats</span>
+                    </Link>
                   ) : (
                     <Link href={`/w/${w.id}`} className="ws-row">
                       <span>{w.name}</span>
@@ -63,7 +62,7 @@ export default async function Home() {
             {list.every((w) => w.role === "rep") && (
               <p className="muted small">
                 Reps log calls from the Debrief Chrome extension, or from the{" "}
-                <a href="/log">web logger</a> in any browser. The dashboard is for managers.
+                <a href="/log">web logger</a> in any browser. Open your team above to see your own stats.
               </p>
             )}
           </section>
