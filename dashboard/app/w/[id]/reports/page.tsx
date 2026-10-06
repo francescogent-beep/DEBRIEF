@@ -133,11 +133,19 @@ function rateDelta(b: number, n: number, pb: number, pn: number) {
   return Math.round((rate(b, n) - rate(pb, pn)) * 100);
 }
 
-function Delta({ pts, suffix = " pts" }: { pts: number | null; suffix?: string }) {
+// Pick-ups per appointment: how many conversations it takes to book one (lower = better).
+const ppb = (booked: number, pickups: number) => (booked ? pickups / booked : null);
+const ppbTxt = (booked: number, pickups: number) => {
+  const v = ppb(booked, pickups);
+  return v == null ? "–" : v.toFixed(1);
+};
+
+function Delta({ pts, suffix = " pts", invert = false }: { pts: number | null; suffix?: string; invert?: boolean }) {
   if (pts === null) return <span className="muted">—</span>;
   if (pts === 0) return <span className="delta flat">±0{suffix}</span>;
+  const good = invert ? pts < 0 : pts > 0;
   return (
-    <span className={`delta ${pts > 0 ? "up" : "down"}`}>
+    <span className={`delta ${good ? "up" : "down"}`}>
       {pts > 0 ? "▲" : "▼"} {Math.abs(pts)}
       {suffix}
     </span>
@@ -393,6 +401,33 @@ export default async function Reports({
     );
   }
 
+  // Pick-ups per appointment: team, fastest/slowest rep and client (enough data only).
+  const teamPpb = ppb(t.booked, t.pickups);
+  const ppbReps = r.reps.filter((x) => x.pickups >= 20 && x.booked > 0).map((x) => ({ name: x.name, v: x.pickups / x.booked }));
+  const ppbClients = r.clients
+    .filter((c) => c.id && c.pickups >= 20 && c.booked > 0)
+    .map((c) => ({ name: c.name, v: c.pickups / c.booked }));
+  if (teamPpb != null && t.booked >= 3) {
+    const fastRep = [...ppbReps].sort((a, b) => a.v - b.v)[0];
+    const slowClient = ppbClients.length > 1 ? [...ppbClients].sort((a, b) => b.v - a.v)[0] : undefined;
+    findings.push(
+      <>
+        It takes <b>{teamPpb.toFixed(1)} pick-ups</b> on average to book one appointment
+        {fastRep && ppbReps.length > 1 ? (
+          <>
+            ; fastest rep: <b>{fastRep.name}</b> ({fastRep.v.toFixed(1)})
+          </>
+        ) : null}
+        {slowClient ? (
+          <>
+            ; hardest client: <b>{slowClient.name}</b> ({slowClient.v.toFixed(1)})
+          </>
+        ) : null}
+        .
+      </>
+    );
+  }
+
   if (t.rep_days > 0) {
     const missing = Math.max(0, t.rep_days - t.eods);
     if (missing > 0) {
@@ -482,6 +517,21 @@ export default async function Reports({
             <span>Book rate</span>
             <b>{pctTxt(t.booked, t.pickups)}</b>
             <Delta pts={bookDelta} />
+          </div>
+          <div className="kpi" title="How many pick-ups it takes, on average, to book one appointment. Lower is better.">
+            <span>Pick-ups per appointment</span>
+            <b>{ppbTxt(t.booked, t.pickups)}</b>
+            {(() => {
+              const now = ppb(t.booked, t.pickups);
+              const before = ppb(t.prev_booked, t.prev_pickups);
+              return (
+                <Delta
+                  pts={now != null && before != null && comparable(t.pickups, t.prev_pickups) ? Math.round((now - before) * 10) / 10 : null}
+                  suffix=""
+                  invert
+                />
+              );
+            })()}
           </div>
           <div className="kpi">
             <span>Days on target</span>
@@ -822,6 +872,81 @@ export default async function Reports({
               </section>
             )}
 
+            {/* Pick-ups per appointment */}
+            {(() => {
+              const repList = r.reps
+                .filter((x) => x.pickups > 0)
+                .map((x) => ({ id: x.id as string | null, name: x.name, pickups: x.pickups, booked: x.booked, v: ppb(x.booked, x.pickups) }))
+                .sort((a, b) => (a.v ?? Infinity) - (b.v ?? Infinity) || b.pickups - a.pickups);
+              const clientList = r.clients
+                .filter((c) => c.pickups > 0)
+                .map((c) => ({ id: c.id, name: c.name, pickups: c.pickups, booked: c.booked, v: ppb(c.booked, c.pickups) }))
+                .sort((a, b) => (a.v ?? Infinity) - (b.v ?? Infinity) || b.pickups - a.pickups);
+              const maxV = Math.max(1, ...[...repList, ...clientList].map((x) => x.v ?? 0));
+              const List = ({ rows, kind }: { rows: typeof repList; kind: "rep" | "client" }) => (
+                <ul className="barlist ppb-list">
+                  {rows.map((x) => {
+                    const few = x.pickups < 20;
+                    const worse = !few && x.v != null && teamPpb != null && x.v >= teamPpb * 1.25;
+                    const better = !few && x.v != null && teamPpb != null && x.v <= teamPpb * 0.8;
+                    return (
+                      <li
+                        key={`${kind}-${x.id ?? "none"}`}
+                        title={`${x.name}: ${x.booked} booked from ${x.pickups} pick-ups${x.v != null ? ` = 1 appointment every ${x.v.toFixed(1)} pick-ups` : ""}`}
+                      >
+                        <span className="bl-label">
+                          {x.id ? (
+                            <Link href={qs(kind === "rep" ? { rep: x.id } : { client: x.id })} className="row-link">
+                              {x.name}
+                            </Link>
+                          ) : (
+                            <span className="muted">{x.name}</span>
+                          )}
+                        </span>
+                        <span className="bl-track">
+                          {x.v != null && (
+                            <span
+                              className={`bl-fill ${worse ? "bad" : better ? "good" : ""}`}
+                              style={{ width: `${(x.v / maxV) * 100}%` }}
+                            />
+                          )}
+                        </span>
+                        <span className="bl-value">
+                          <b className={worse ? "bad-text" : better ? "good-text" : ""}>{x.v != null ? x.v.toFixed(1) : "–"}</b>{" "}
+                          <em>
+                            {x.booked} booked of {x.pickups}
+                            {few ? " · few calls" : ""}
+                          </em>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+              return (
+                <section className="card">
+                  <h2>Pick-ups per appointment</h2>
+                  <p className="muted small">
+                    How many pick-ups it takes on average to book one appointment. <b>Lower is better.</b> Team average:{" "}
+                    <b>{teamPpb != null ? teamPpb.toFixed(1) : "–"}</b>. Green = 20%+ better than the team, red = 25%+ worse
+                    (with at least 20 pick-ups).
+                  </p>
+                  <div className={clientList.length > 0 && !clientFilter ? "grid-2 inner" : ""}>
+                    <div>
+                      <h3 className="h3">By rep</h3>
+                      <List rows={repList} kind="rep" />
+                    </div>
+                    {clientList.length > 0 && !clientFilter && (
+                      <div>
+                        <h3 className="h3">By client</h3>
+                        <List rows={clientList} kind="client" />
+                      </div>
+                    )}
+                  </div>
+                </section>
+              );
+            })()}
+
             {/* Reps */}
             <section className="card">
               <h2>Rep scorecard</h2>
@@ -837,6 +962,7 @@ export default async function Reports({
                       <th className="num">Pick-ups</th>
                       <th className="num">Booked</th>
                       <th className="num">Book rate</th>
+                      <th className="num" title="Pick-ups needed per appointment (lower is better)">Pick-ups / appt</th>
                       <th className="num">Trend</th>
                       <th className="num">Avg dials/day</th>
                       <th className="num">On target</th>
@@ -856,6 +982,7 @@ export default async function Reports({
                         <td className="num">{rep.pickups}</td>
                         <td className="num good-text">{rep.booked}</td>
                         <td className="num">{pctTxt(rep.booked, rep.pickups)}</td>
+                        <td className="num">{ppbTxt(rep.booked, rep.pickups)}</td>
                         <td className="num">
                           <Delta pts={rateDelta(rep.booked, rep.pickups, rep.prev_booked, rep.prev_pickups)} />
                         </td>
@@ -985,6 +1112,9 @@ export default async function Reports({
                           )}
                           <div className="client-kpi">
                             <b>{pctTxt(c.booked, c.pickups)}</b> book rate <Delta pts={d} />
+                            <div className="muted small">
+                              {c.booked ? `1 appointment every ${ppbTxt(c.booked, c.pickups)} pick-ups` : "no appointments yet"}
+                            </div>
                           </div>
                         </header>
                         {c.pickups === 0 ? (
@@ -1075,6 +1205,7 @@ export default async function Reports({
                         <th className="num">Pick-ups</th>
                         <th className="num">Booked</th>
                         <th className="num">Book rate</th>
+                        <th className="num" title="Pick-ups needed per appointment (lower is better)">Pick-ups / appt</th>
                         <th>Most died at</th>
                         <th>Top objection</th>
                       </tr>
@@ -1090,6 +1221,7 @@ export default async function Reports({
                             <td className="num">{rc.conversations}</td>
                             <td className="num good-text">{rc.booked}</td>
                             <td className="num">{pctTxt(rc.booked, rc.conversations)}</td>
+                            <td className="num">{ppbTxt(rc.booked, rc.conversations)}</td>
                             <td>{rc.top_stage ?? <span className="muted">—</span>}</td>
                             <td>{rc.top_objection ?? <span className="muted">—</span>}</td>
                           </tr>

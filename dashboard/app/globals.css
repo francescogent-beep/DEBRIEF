@@ -382,3 +382,12 @@ details.day-item > summary:hover { background: var(--line); }
 }
 .date-range .btn[disabled] { opacity: .5; cursor: default; }
 @media (prefers-color-scheme: dark) { .date-range input[type="date"] { color-scheme: dark; } }
+
+/* Pick-ups per appointment */
+.reports .report-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.bl-fill.good { background: var(--good); }
+.bl-fill.bad { background: var(--bad); }
+.ppb-list .bl-value em { font-style: normal; color: var(--muted); font-size: 12px; }
+.client-kpi .small { font-weight: 400; margin-top: 2px; }
+.ppb-list li { grid-template-columns: 140px 1fr 170px; }
+@media (max-width: 640px) { .ppb-list li { grid-template-columns: minmax(80px, 34%) 1fr auto; } }

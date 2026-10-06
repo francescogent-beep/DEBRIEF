@@ -63,8 +63,9 @@ debrief/
    - `1` = Booked (saves instantly)
    - Otherwise pick the outcome, then **where it died** (`1`–`5`, or `S` to skip), tap an objection if there was one, **Enter** to save.
    - Made a mistake? Hit **Undo** or the × next to the call (works for 15 minutes).
-4. Going on a break? Hit **⏸ Pause for a break** (or `P`), then **Resume** when back. Logging a call or signing off also ends the break.
-5. End of day → **End of day** tab → what worked, what to improve, blockers, energy → **Sign off the day**.
+4. Check your numbers any time with **📊 My stats**. The extension version is shown at the bottom of the ⋯ menu.
+5. Going on a break? Hit **⏸ Pause for a break** (or `P`), then **Resume** when back. Logging a call or signing off also ends the break.
+6. End of day → **End of day** tab → what worked, what to improve, blockers, energy → **Sign off the day**.
 
 ## Default 7FigureRia setup
 - **Outcomes:** Booked · Callback · Not interested · Not qualified · Hung up
@@ -98,8 +99,9 @@ Dashboard → **⬇ Export / Google Sheets** (or Team & settings → Spreadsheet
 - The links contain a secret key. **Reset links** if one leaks; old links and connected sheets stop working.
 
 ## My stats (for reps)
-Every rep can open **⋯ → 📊 My stats** in the extension (or sign in on the dashboard website with the same email and
-password). It shows today's progress toward the target, their numbers vs the team average (pick-ups and booked per day,
+Every rep can click **📊 My stats** in the extension or web logger. It opens the website already signed in (no second
+login; the hand-off lasts about an hour and clicking again renews it). Reps can also sign in on the website directly with
+the same email and password. It shows today's progress toward the target, their numbers vs the team average (pick-ups and booked per day,
 book rate, days on target, dials, time between pick-ups), a personal "Your focus" list, where their calls end vs the team,
 their best hours and top objections, a day-by-day review with their EOD notes, and every call they logged.
 Reps only ever see their own numbers plus anonymous team averages. Managers have the same page for themselves.
@@ -115,6 +117,8 @@ Reps only ever see their own numbers plus anonymous team averages. Managers have
 - **When calls get picked up and booked:** weekday × hour heatmap (toggle pick-ups / book rate), best time slots, by hour, by day.
 - **Rep scorecard:** pick-ups, booked, book rate and trend, average dials, days on target, EODs done, biggest leak vs the team, top objection.
 - **Where each rep loses calls:** stage-by-stage share vs the team, with outliers highlighted.
+- **Pick-ups per appointment:** how many pick-ups it takes on average to book one appointment (lower is better), for the
+  team, each rep, each client and rep × client. Reps see theirs vs the team on My stats.
 - **Daily trend, where calls die, top objections.**
 - **Time between pick-ups:** break time (Pause button) is taken out. Typical gap, 30+ minute gaps per day, typical gap by hour, and per rep: first/last pick-up and pick-ups per hour.
 - **Client results:** funnel per client, biggest drop, best rep, best hour, top objections, plus a **Rep × client** table.

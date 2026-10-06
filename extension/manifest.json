@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Debrief — Call Logger",
+  "name": "Debrief \u2014 Call Logger",
   "short_name": "Debrief",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "description": "Log every answered call in seconds, see where calls die, and sign off your day.",
   "icons": {
     "16": "icons/icon16.png",
@@ -22,11 +22,19 @@
   "background": {
     "service_worker": "background.js"
   },
-  "permissions": ["sidePanel", "storage"],
-  "host_permissions": ["https://*.supabase.co/*"],
+  "permissions": [
+    "sidePanel",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://*.supabase.co/*"
+  ],
   "commands": {
     "_execute_action": {
-      "suggested_key": { "default": "Alt+D", "mac": "Alt+D" },
+      "suggested_key": {
+        "default": "Alt+D",
+        "mac": "Alt+D"
+      },
       "description": "Open Debrief"
     }
   }

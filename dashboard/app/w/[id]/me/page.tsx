@@ -222,6 +222,26 @@ export default async function MyStats({
       )
     );
   }
+  if (m.booked >= 2 && tm.booked > 0) {
+    const mine = m.pickups / m.booked;
+    const team = tm.pickups / tm.booked;
+    focus.push(
+      <>
+        You book <b>1 appointment every {mine.toFixed(1)} pick-ups</b>
+        {Math.abs(mine - team) / team < 0.1 ? (
+          <>, about the same as the team ({team.toFixed(1)}).</>
+        ) : mine < team ? (
+          <>
+            , <span className="good-text">better than the team&apos;s {team.toFixed(1)}</span>.
+          </>
+        ) : (
+          <>
+            ; the team averages <span className="bad-text">{team.toFixed(1)}</span>.
+          </>
+        )}
+      </>
+    );
+  }
   if (leak) {
     focus.push(
       <>
@@ -328,6 +348,16 @@ export default async function MyStats({
             <span>Book rate</span>
             <b>{pctTxt(m.booked, m.pickups)}</b>
             <Vs me={myRate} team={teamRate} fmt={(v) => `${Math.round(v * 100)}%`} />
+          </div>
+          <div className="kpi" title="How many pick-ups it takes you, on average, to book one appointment. Lower is better.">
+            <span>Pick-ups per appointment</span>
+            <b>{m.booked ? (m.pickups / m.booked).toFixed(1) : "–"}</b>
+            <Vs
+              me={m.booked ? m.pickups / m.booked : null}
+              team={tm.booked ? tm.pickups / tm.booked : null}
+              lowerIsBetter
+              fmt={(v) => v.toFixed(1)}
+            />
           </div>
           <div className="kpi">
             <span>Days on target</span>

@@ -69,6 +69,7 @@
         <button data-action="mystats" id="menu-mystats" hidden>📊 My stats</button>
         <button data-action="dashboard" id="menu-dashboard" hidden>Open dashboard</button>
         <button data-action="signout">Sign out</button>
+        <p class="menu-version" id="menu-version"></p>
       </div>
     </header>
 
@@ -78,9 +79,14 @@
       <div class="stat"><b id="stat-rate">–</b><span>book rate</span></div>
     </div>
 
-    <button class="btn ghost small break-btn" id="break-btn" type="button" title="Going on a break? Pause so the gap isn't counted.">
-      ⏸ Pause for a break <kbd>P</kbd>
-    </button>
+    <div class="action-row">
+      <button class="btn ghost small break-btn" id="break-btn" type="button" title="Going on a break? Pause so the gap isn't counted.">
+        ⏸ Pause for a break <kbd>P</kbd>
+      </button>
+      <button class="btn ghost small" id="mystats-btn" type="button" title="Your numbers vs the team, day by day, every call" hidden>
+        📊 My stats
+      </button>
+    </div>
     <div id="break-banner" class="break-banner" hidden role="status">
       <div>
         <b>On break</b>

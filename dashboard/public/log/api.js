@@ -134,3 +134,12 @@ export const db = {
   remove: (table, query) => request("DELETE", `/rest/v1/${table}?${query}`),
   rpc: (fn, args) => request("POST", `/rest/v1/rpc/${fn}`, { body: args }),
 };
+
+// Link that opens a dashboard page already signed in (see dashboard/app/auth/handoff).
+// Only a fresh access token is passed — never the refresh token — so the website
+// can't rotate it and sign the extension out.
+export async function handoffUrl(base, next) {
+  if (!session) throw new ApiError("Signed out", 401);
+  if (session.expires_at - 30 * 60 < Date.now() / 1000) await refresh();
+  return `${base}/auth/handoff#at=${encodeURIComponent(session.access_token)}&next=${encodeURIComponent(next)}`;
+}

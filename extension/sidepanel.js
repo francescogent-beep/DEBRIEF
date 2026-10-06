@@ -1,4 +1,4 @@
-import { loadSession, currentUser, signIn, signUp, signOut, db, ApiError } from "./api.js";
+import { loadSession, currentUser, signIn, signUp, signOut, db, ApiError, handoffUrl } from "./api.js";
 import { DASHBOARD_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 // ---------------------------------------------------------------------------
@@ -109,6 +109,7 @@ function renderWorkspaceSelect() {
   const isManager = state.memberships.find((m) => m.workspace.id === state.wsId)?.role === "manager";
   $("#menu-dashboard").hidden = !(isManager && DASHBOARD_URL);
   $("#menu-mystats").hidden = !DASHBOARD_URL;
+  $("#mystats-btn").hidden = !DASHBOARD_URL;
 }
 
 async function loadWorkspace() {
@@ -326,9 +327,19 @@ $("#menu").addEventListener("click", async (e) => {
   const action = e.target.dataset.action;
   if (action === "join") { $("#join-back").hidden = false; show("join"); }
   if (action === "dashboard") chrome.tabs.create({ url: DASHBOARD_URL });
-  if (action === "mystats") chrome.tabs.create({ url: `${DASHBOARD_URL}/w/${state.wsId}/me` });
+  if (action === "mystats") openMyStats();
   if (action === "signout") doSignOut();
 });
+async function openMyStats() {
+  const next = `/w/${state.wsId}/me`;
+  try {
+    chrome.tabs.create({ url: await handoffUrl(DASHBOARD_URL, next) });
+  } catch {
+    chrome.tabs.create({ url: `${DASHBOARD_URL}${next}` });
+  }
+}
+$("#mystats-btn").addEventListener("click", openMyStats);
+
 $("#ws-select").addEventListener("change", async (e) => {
   state.wsId = e.target.value;
   renderWorkspaceSelect();
@@ -852,5 +863,12 @@ document.addEventListener("keydown", (e) => {
   }
   if (state.step === "stage" && e.key.toLowerCase() === "s") chooseStage(null);
 });
+
+// Version shown at the bottom of the ⋯ menu so reps can check they're up to date.
+try {
+  $("#menu-version").textContent = `Debrief v${chrome.runtime.getManifest().version}`;
+} catch {
+  $("#menu-version").textContent = "Debrief (web)";
+}
 
 boot();
