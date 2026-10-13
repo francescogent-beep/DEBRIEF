@@ -243,3 +243,12 @@ html.web .toast { left: 50%; right: auto; width: min(416px, calc(100vw - 24px));
 @media (prefers-color-scheme: dark) {
   .break-banner { background: #3a3013; border-color: #6b5a22; }
 }
+
+/* Question card: long gap / welcome back */
+.ask-card {
+  margin: -4px 0 10px; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid var(--line); background: var(--surface); box-shadow: 0 2px 10px rgba(0,0,0,.06);
+}
+.ask-card p { margin: 0 0 8px; font-size: 13px; line-height: 1.4; }
+.ask-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+.ask-buttons .btn { flex: 1 1 auto; }

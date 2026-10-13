@@ -65,6 +65,9 @@ debrief/
    - Made a mistake? Hit **Undo** or the × next to the call (works for 15 minutes).
 4. Check your numbers any time with **📊 My stats**. The extension version is shown at the bottom of the ⋯ menu.
 5. Going on a break? Hit **⏸ Pause for a break** (or `P`), then **Resume** when back. Logging a call or signing off also ends the break.
+   Forgot? Debrief catches it: after a pick-up that comes 30+ min after the previous one it asks "were you on a break?"
+   (one tap), and the Chrome extension pauses automatically when the screen is locked, or asks when the computer
+   has been untouched for 10+ min (logging a pick-up first means you were on a call, so nothing is saved).
 6. End of day → **End of day** tab → what worked, what to improve, blockers, energy → **Sign off the day**.
 
 ## Default 7FigureRia setup
@@ -120,7 +123,8 @@ Reps only ever see their own numbers plus anonymous team averages. Managers have
 - **Pick-ups per appointment:** how many pick-ups it takes on average to book one appointment (lower is better), for the
   team, each rep, each client and rep × client. Reps see theirs vs the team on My stats.
 - **Daily trend, where calls die, top objections.**
-- **Time between pick-ups:** break time (Pause button) is taken out. Typical gap, 30+ minute gaps per day, typical gap by hour, and per rep: first/last pick-up and pick-ups per hour.
+- **Time between pick-ups:** break time is taken out (Pause button, answers to the gap question, locked/idle computer).
+  **Unexplained** = 45+ min gaps nobody accounted for, per rep per day (also on the Dashboard per rep for the day). Typical gap, 30+ minute gaps per day, typical gap by hour, and per rep: first/last pick-up and pick-ups per hour.
 - **Client results:** funnel per client, biggest drop, best rep, best hour, top objections, plus a **Rep × client** table.
 
 Patterns get reliable at roughly 100+ pick-ups in the range; the page says so when data is thin.

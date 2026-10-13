@@ -22,6 +22,7 @@ const state = {
   dialClients: [],       // client ids shown in the EOD dials section
   manualDials: new Set(), // clients the rep added to the dials section by hand
   breakOpen: null,       // { id, started_at } while the rep is on a break
+  breaksToday: [],       // [{ s, e }] ms — breaks in this shift (for gap maths)
 };
 const CLIENT_KEY = (ws) => `debrief.client.${ws}`;
 const NO_CLIENT = "none";
@@ -137,6 +138,7 @@ async function loadWorkspace() {
   await flushQueue();
   await loadToday();
   await loadBreak();
+  processAway().catch(() => {});
   await loadEod();
 }
 
@@ -148,6 +150,17 @@ const BREAK_MAX_MS = 2 * 60 * 60 * 1000; // a forgotten break counts for at most
 
 async function loadBreak() {
   state.breakOpen = null;
+  state.breaksToday = [];
+  try {
+    const rows = await db.select(
+      "breaks",
+      `select=started_at,ended_at&workspace_id=eq.${state.wsId}&rep_id=eq.${currentUser().id}` +
+        `&started_at=gt.${encodeURIComponent(new Date(shiftStart().getTime() - BREAK_MAX_MS).toISOString())}`
+    );
+    state.breaksToday = rows
+      .filter((b) => b.ended_at)
+      .map((b) => ({ s: Date.parse(b.started_at), e: Date.parse(b.ended_at) }));
+  } catch { /* optional */ }
   try {
     const [open] = await db.select(
       "breaks",
@@ -191,6 +204,7 @@ async function endBreak({ quiet = false } = {}) {
   try {
     if (b.saving) await b.saving;
     if (b.id) await db.update("breaks", `id=eq.${b.id}`, { ended_at });
+    state.breaksToday.push({ s: Date.parse(b.started_at), e: Date.parse(ended_at) });
     if (!quiet) toast(`Back to it 💪 Break: ${mins} min`);
   } catch (err) {
     toast(`Couldn't end the break: ${err.message}`);
@@ -199,6 +213,179 @@ async function endBreak({ quiet = false } = {}) {
 
 function toggleBreak() {
   return state.breakOpen ? endBreak() : startBreak();
+}
+
+// ---------------------------------------------------------------------------
+// Question card — one question at a time.
+// ---------------------------------------------------------------------------
+const askQueue = [];
+let askCurrent = null;
+let askTimer = null;
+
+function ask(q) {
+  // q: { key, text, buttons: [{ label, primary?, run }], timeoutMs?, onTimeout? }
+  if (askCurrent?.key === q.key || askQueue.some((x) => x.key === q.key)) return;
+  askQueue.push(q);
+  if (!askCurrent) nextAsk();
+}
+function nextAsk() {
+  clearTimeout(askTimer);
+  askCurrent = askQueue.shift() || null;
+  const card = $("#ask-card");
+  if (!askCurrent) { card.hidden = true; return; }
+  const q = askCurrent;
+  $("#ask-text").textContent = q.text;
+  const box = $("#ask-buttons");
+  box.replaceChildren(
+    ...q.buttons.map((b) =>
+      el("button", {
+        className: `btn small ${b.primary ? "primary" : "ghost"}`,
+        type: "button",
+        textContent: b.label,
+        onclick: async () => { closeAsk(q); await b.run(); },
+      })
+    )
+  );
+  card.hidden = false;
+  if (q.timeoutMs) askTimer = setTimeout(async () => { closeAsk(q); await q.onTimeout?.(); }, q.timeoutMs);
+}
+function closeAsk(q) {
+  if (askCurrent !== q) return;
+  askCurrent = null;
+  nextAsk();
+}
+// Called when the rep logs a pick-up: any open question resolves via its onLog.
+async function resolveAsksOnLog() {
+  const all = [askCurrent, ...askQueue.splice(0)].filter(Boolean);
+  askCurrent = null;
+  nextAsk();
+  for (const q of all) await q.onLog?.();
+}
+
+const mins = (ms) => Math.max(1, Math.round(ms / 60000));
+const overlapMs = (s, e) =>
+  state.breaksToday.reduce((a, b) => a + Math.max(0, Math.min(b.e, e) - Math.max(b.s, s)), 0);
+
+async function saveBreak(startMs, endMs, source) {
+  const row = {
+    workspace_id: state.wsId,
+    rep_id: currentUser().id,
+    started_at: new Date(startMs).toISOString(),
+    ended_at: new Date(endMs).toISOString(),
+    source,
+  };
+  const [saved] = await db.insert("breaks", row);
+  state.breaksToday.push({ s: startMs, e: endMs, id: saved.id });
+  return saved;
+}
+async function undoBreak(id) {
+  try {
+    await db.remove("breaks", `id=eq.${id}`);
+    state.breaksToday = state.breaksToday.filter((b) => b.id !== id);
+    toast("OK, not counted as a break");
+  } catch (err) {
+    toast(`Couldn't undo: ${err.message}`);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 1) Long gap: after a pick-up that came 30+ min after the previous one
+//    (not counting breaks), ask whether the rep was on a break or dialing.
+// ---------------------------------------------------------------------------
+const GAP_ASK_MIN = 30;
+
+function askAboutGap(savedLog, prevAt) {
+  const end = Date.parse(savedLog.created_at);
+  const gapMs = end - prevAt - overlapMs(prevAt, end);
+  if (gapMs < GAP_ASK_MIN * 60000) return;
+  const gap = mins(gapMs);
+  const asBreak = (m) => async () => {
+    const dur = Math.min(m * 60000, gapMs);
+    try {
+      const b = await saveBreak(prevAt, prevAt + dur, "gap");
+      toast(`Saved: ${mins(dur)} min break`, () => undoBreak(b.id));
+    } catch (err) { toast(`Couldn't save: ${err.message}`); }
+  };
+  const options = [15, 30, 45, 60].filter((m) => m < gap - 2);
+  ask({
+    key: `gap-${savedLog.id}`,
+    text: `${gap} min since your previous pick-up. Were you on a break?`,
+    buttons: [
+      {
+        label: "No, I was dialing",
+        primary: true,
+        run: async () => {
+          try {
+            await db.update("call_logs", `id=eq.${savedLog.id}`, { gap_confirmed: true });
+            toast("Got it — counted as dialing time");
+          } catch (err) { toast(`Couldn't save: ${err.message}`); }
+        },
+      },
+      ...options.map((m) => ({ label: `Break ${m}m`, run: asBreak(m) })),
+      { label: `Break, all ${gap}m`, run: asBreak(gap) },
+    ],
+    timeoutMs: 10 * 60000, // unanswered → shows as an unexplained gap for managers
+  });
+}
+
+// ---------------------------------------------------------------------------
+// 2) Away detection (extension only): the background worker queues periods
+//    with no activity (10+ min) or a locked screen. Locked = break. Idle =
+//    ask, because a long call can look idle; logging a pick-up = was on a call.
+// ---------------------------------------------------------------------------
+const PENDING_KEY = "debrief.awayPending";
+const HAS_IDLE = typeof chrome !== "undefined" && !!chrome.idle;
+
+async function processAway() {
+  if (!HAS_IDLE || !state.wsId || !currentUser()) return;
+  const list = (await chrome.storage.local.get(PENDING_KEY))[PENDING_KEY] || [];
+  if (!list.length) return;
+  await chrome.storage.local.set({ [PENDING_KEY]: [] });
+  const floor = shiftStart().getTime();
+  for (const a of list) {
+    const start = Math.max(a.start, floor);
+    const end = a.end;
+    if (end - start < 5 * 60000) continue;
+    if (state.breakOpen && Date.parse(state.breakOpen.started_at) < end) continue; // already on a manual break
+    if (overlapMs(start, end) > (end - start) / 2) continue; // already covered
+    const loggedDuring = state.logs.some((l) => {
+      const t = Date.parse(l.created_at);
+      return t > start && t < end;
+    });
+    if (loggedDuring) continue;
+    const away = mins(end - start);
+    const save = async (note) => {
+      try {
+        const b = await saveBreak(start, end, "idle");
+        toast(note || `Away ${away} min — counted as a break`, () => undoBreak(b.id));
+      } catch (err) { toast(`Couldn't save the break: ${err.message}`); }
+    };
+    if (a.locked) {
+      await save(`Welcome back 👋 Screen was locked ${away} min — counted as a break`);
+      continue;
+    }
+    // Panel was closed while they were away and it's long past: save it, with Undo.
+    if (Date.now() - end > 3 * 60000) {
+      await save(`You were away ${away} min — counted as a break`);
+      continue;
+    }
+    ask({
+      key: `away-${a.start}`,
+      text: `Welcome back 👋 No activity on this computer for ${away} min. Were you on a break?`,
+      buttons: [
+        { label: "Yes, break", primary: true, run: () => save(`Saved: ${away} min break`) },
+        { label: "No, I was on a call", run: async () => toast("Got it — not a break") },
+      ],
+      timeoutMs: 3 * 60000,
+      onTimeout: () => save(),
+      onLog: async () => {}, // logging a pick-up first = they were on a call
+    });
+  }
+}
+if (HAS_IDLE && chrome.storage?.onChanged) {
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === "local" && changes[PENDING_KEY]?.newValue?.length) processAway().catch(() => {});
+  });
 }
 
 function renderBreak() {
@@ -440,8 +627,11 @@ $("#save-log").addEventListener("click", () => saveLog());
 $("#cancel-log").addEventListener("click", () => resetDraft());
 
 async function saveLog() {
-  // Logging a call means the break is over.
-  if (state.breakOpen) endBreak({ quiet: true });
+  // Logging a call means the break is over, and answers any "were you away?" question.
+  if (state.breakOpen) await endBreak({ quiet: true });
+  await resolveAsksOnLog();
+  const prevLog = state.logs.find((l) => !l.pending);
+  const prevAt = prevLog ? Date.parse(prevLog.created_at) : null;
   const d = state.draft;
   const row = {
     workspace_id: state.wsId,
@@ -466,6 +656,7 @@ async function saveLog() {
     renderToday();
     const label = state.byId.get(row.outcome_id)?.label || "Logged";
     toast(`${label} ✓`, () => deleteLog(saved.id));
+    if (prevAt) askAboutGap(saved, prevAt);
   } catch (err) {
     if (err instanceof ApiError && err.status && err.status < 500 && err.status !== 401) {
       state.logs = state.logs.filter((l) => l !== temp);

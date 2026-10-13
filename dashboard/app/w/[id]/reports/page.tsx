@@ -63,6 +63,8 @@ type Report = {
   daily: { day: string; pickups: number; booked: number }[];
   gaps?: {
     break_minutes?: number | null;
+    unexplained_minutes?: number | null;
+    rep_days?: number | null;
     median: number | null;
     buckets: { b: number; n: number }[];
     by_hour: { hour: number; median: number; n: number }[];
@@ -84,6 +86,8 @@ type GapRep = {
   avg_last: string | null;
   per_hour: number | null;
   break_per_day?: number | null;
+  unexplained_per_day?: number | null;
+  unexplained_n?: number | null;
   breaks?: number;
 };
 type RepClient = {
@@ -766,8 +770,9 @@ export default async function Reports({
               <section className="card">
                 <h2>Time between pick-ups</h2>
                 <p className="muted small">
-                  Minutes from one pick-up to the next for the same rep on the same day, across all clients. Time on
-                  a break (the Pause button in the extension) is taken out. Reps only log answered calls, so this
+                  Minutes from one pick-up to the next for the same rep on the same day, across all clients. Breaks
+                  are taken out: the Pause button, breaks the rep confirmed after a long gap, and time the computer
+                  was locked or idle. <b>Unexplained</b> = a 45+ min gap nobody accounted for. Reps only log answered calls, so this
                   reflects dialing pace and pick-up luck together; gaps of 30+ minutes usually mean admin, unlogged
                   breaks or not dialing.
                 </p>
@@ -780,6 +785,13 @@ export default async function Reports({
                     <span>Gaps of 30+ min</span>
                     <b>
                       {totalGapDays ? (totalLong / totalGapDays).toFixed(1) : "–"}
+                      <small> per rep per day</small>
+                    </b>
+                  </div>
+                  <div title="Gaps of 45+ min between pick-ups with no break logged and no 'I was dialing' answer">
+                    <span>Unexplained time</span>
+                    <b>
+                      {gaps.rep_days ? minTxt((gaps.unexplained_minutes ?? 0) / gaps.rep_days) : "–"}
                       <small> per rep per day</small>
                     </b>
                   </div>
@@ -836,6 +848,9 @@ export default async function Reports({
                         <th className="num">Last pick-up</th>
                         <th className="num">Pick-ups / hour</th>
                         <th className="num">Breaks / day</th>
+                        <th className="num" title="Gaps of 45+ min with no break logged and no 'I was dialing' answer">
+                          Unexplained / day
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -859,6 +874,15 @@ export default async function Reports({
                             <td className="num">{clockTxt(g.avg_last)}</td>
                             <td className="num">{g.per_hour ?? "—"}</td>
                             <td className="num">{g.break_per_day ? minTxt(g.break_per_day) : <span className="muted">none logged</span>}</td>
+                            <td className="num">
+                              {g.unexplained_per_day ? (
+                                <span className="bad-text" title={`${g.unexplained_n ?? 0} unexplained gap(s) in this period`}>
+                                  {minTxt(g.unexplained_per_day)}
+                                </span>
+                              ) : (
+                                <span className="muted">—</span>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}

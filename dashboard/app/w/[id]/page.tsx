@@ -111,7 +111,7 @@ export default async function Dashboard({
   }
   const stats = statsData as Stats;
 
-  const [{ data: eods }, { data: notes }, { data: breakRows }] = await Promise.all([
+  const [{ data: eods }, { data: notes }, { data: breakRows }, { data: dayLogs }] = await Promise.all([
     supabase
       .from("eods")
       .select(
@@ -135,6 +135,14 @@ export default async function Dashboard({
       .eq("workspace_id", id)
       .gte("started_at", new Date(from.getTime() - BREAK_MAX_MS).toISOString())
       .lt("started_at", to.toISOString()),
+    supabase
+      .from("call_logs")
+      .select("rep_id,created_at,gap_confirmed")
+      .eq("workspace_id", id)
+      .gte("created_at", from.toISOString())
+      .lt("created_at", to.toISOString())
+      .order("created_at")
+      .limit(5000),
   ]);
 
   const labels = new Map<string, Opt>();
@@ -173,6 +181,24 @@ export default async function Dashboard({
         .filter((b) => b.rep === rep)
         .reduce((a, b) => a + Math.max(0, Math.min(b.e, to.getTime()) - Math.max(b.s, from.getTime())), 0) / 60_000
     );
+  // Unexplained time: gaps of 45+ min between pick-ups with no break logged and
+  // no "I was dialing" answer from the rep.
+  const unexplained = new Map<string, number>();
+  {
+    const last = new Map<string, number>();
+    for (const l of dayLogs ?? []) {
+      const rep = l.rep_id as string;
+      const t = Date.parse(l.created_at as string);
+      const prev = last.get(rep);
+      last.set(rep, t);
+      if (prev == null || l.gap_confirmed) continue;
+      const brk = breaks
+        .filter((b) => b.rep === rep)
+        .reduce((a, b) => a + Math.max(0, Math.min(b.e, t) - Math.max(b.s, prev)), 0);
+      const gap = (t - prev - brk) / 60_000;
+      if (gap >= 45) unexplained.set(rep, (unexplained.get(rep) ?? 0) + gap);
+    }
+  }
   const openBreak = (rep: string) => (isToday ? breaks.find((b) => b.rep === rep && b.open) : undefined);
   const lastBreakEnd = (rep: string) => Math.max(0, ...breaks.filter((b) => b.rep === rep && !b.open).map((b) => b.e));
 
@@ -290,6 +316,9 @@ export default async function Dashboard({
                     <th className="num">Dials</th>
                     <th>Target</th>
                     <th className="num">Breaks</th>
+                    <th className="num" title="Gaps of 45+ min between pick-ups with no break logged and no 'I was dialing' answer">
+                      Unexplained
+                    </th>
                     <th>Last call</th>
                   </tr>
                 </thead>
@@ -322,6 +351,12 @@ export default async function Dashboard({
                         {(() => {
                           const m = breakMin(r.user_id);
                           return m ? durTxt(m) : <span className="muted">—</span>;
+                        })()}
+                      </td>
+                      <td className="num">
+                        {(() => {
+                          const m = Math.round(unexplained.get(r.user_id) ?? 0);
+                          return m ? <span className="bad-text">{durTxt(m)}</span> : <span className="muted">—</span>;
                         })()}
                       </td>
                       <td className="muted">{r.last_log ? (isToday ? relativeTime(r.last_log) : new Date(r.last_log).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ })) : "—"}</td>
