@@ -88,6 +88,9 @@ type GapRep = {
   break_per_day?: number | null;
   unexplained_per_day?: number | null;
   unexplained_n?: number | null;
+  avg_start?: string | null;
+  avg_ramp?: number | null;
+  ramp_days?: number | null;
   breaks?: number;
 };
 type RepClient = {
@@ -844,6 +847,10 @@ export default async function Reports({
                         <th className="num">Slow gaps</th>
                         <th className="num">30+ min gaps / day</th>
                         <th className="num">Longest gap / day</th>
+                        <th className="num" title="Average time they pressed Start my day">Start</th>
+                        <th className="num" title="Average time from Start my day to the first pick-up (breaks taken out)">
+                          Start → 1st pick-up
+                        </th>
                         <th className="num">First pick-up</th>
                         <th className="num">Last pick-up</th>
                         <th className="num">Pick-ups / hour</th>
@@ -870,6 +877,8 @@ export default async function Reports({
                             <td className="num">{minTxt(g.p90)}</td>
                             <td className="num">{g.days ? (g.long_gaps / g.days).toFixed(1) : "—"}</td>
                             <td className="num">{minTxt(g.avg_longest)}</td>
+                            <td className="num">{g.avg_start ? clockTxt(g.avg_start) : <span className="muted">not used</span>}</td>
+                            <td className="num">{g.avg_ramp != null ? minTxt(g.avg_ramp) : <span className="muted">—</span>}</td>
                             <td className="num">{clockTxt(g.avg_first)}</td>
                             <td className="num">{clockTxt(g.avg_last)}</td>
                             <td className="num">{g.per_hour ?? "—"}</td>
@@ -890,7 +899,8 @@ export default async function Reports({
                   </table>
                 </div>
                 <p className="muted small">
-                  First and last pick-up are averages across the days each rep logged calls. Pick-ups per hour leaves out
+                  Start, first and last pick-up are averages across the days each rep worked. &quot;Not used&quot; = the rep
+                  hasn&apos;t pressed Start my day yet. Pick-ups per hour leaves out
                   break time.
                 </p>
               </section>

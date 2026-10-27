@@ -63,6 +63,8 @@ debrief/
    - `1` = Booked (saves instantly)
    - Otherwise pick the outcome, then **where it died** (`1`–`5`, or `S` to skip), tap an objection if there was one, **Enter** to save.
    - Made a mistake? Hit **Undo** or the × next to the call (works for 15 minutes).
+3b. Starting your shift? Press **▶ Start my day** when you begin dialing, so the time before your first pick-up counts.
+   Forgot? Your first pick-up asks when you started (just now / 15 min / 30 min / 1h / 2h ago).
 4. Check your numbers any time with **📊 My stats**. The extension version is shown at the bottom of the ⋯ menu.
 5. Going on a break? Hit **⏸ Pause for a break** (or `P`), then **Resume** when back. Logging a call or signing off also ends the break.
    Forgot? Debrief catches it: after a pick-up that comes 30+ min after the previous one it asks "were you on a break?"
@@ -113,6 +115,13 @@ Reps only ever see their own numbers plus anonymous team averages. Managers have
 - **Dashboard = one day, live.** Today's numbers, who is logging, who is on a break, who has gone quiet (no call in 45+ min), who has signed
   off and hit target, today's blockers, EOD notes and call notes. Use ← Previous day to look back at any single day.
 - **Reports = over time.** Everything below.
+
+## Quiet alerts (and Slack)
+Every 5 minutes the database checks for reps who have started their day (pressed Start my day or logged a pick-up), haven't signed off,
+aren't on a break, and haven't logged a pick-up for 30+ minutes (configurable) within the team's alert hours. Each
+quiet spell raises one alert: it shows at the top of the Dashboard and, when connected, is posted to Slack.
+Set it up in **Team & settings → Quiet alerts**: minutes, hours, and a Slack incoming webhook URL (instructions and a
+**Send a test** button are on the page). Runs on Supabase pg_cron + pg_net (job `debrief-quiet-alerts`).
 
 ## Reports
 **Reports** (managers and owner). Pick a period (today, yesterday, this/last week, this/last month, last 7/30/90 days) or any custom from → to dates, and filter by client or rep. My stats has the same period picker. Every number is compared with the same number of days just before.

@@ -79,9 +79,14 @@
       <div class="stat"><b id="stat-rate">–</b><span>book rate</span></div>
     </div>
 
+    <div id="start-row" class="start-row" hidden>
+      <button class="btn primary start-btn" id="start-btn" type="button">▶ Start my day</button>
+      <p class="muted small">Press when you start dialing, so time before your first pick-up counts.</p>
+    </div>
     <div class="action-row">
+      <span id="started-label" class="started-label muted small" hidden></span>
       <button class="btn ghost small break-btn" id="break-btn" type="button" title="Going on a break? Pause so the gap isn't counted.">
-        ⏸ Pause for a break <kbd>P</kbd>
+        ⏸️ Pause for a break <kbd>P</kbd>
       </button>
       <button class="btn ghost small" id="mystats-btn" type="button" title="Your numbers vs the team, day by day, every call" hidden>
         📊 My stats

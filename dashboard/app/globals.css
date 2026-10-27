@@ -391,3 +391,23 @@ details.day-item > summary:hover { background: var(--line); }
 .client-kpi .small { font-weight: 400; margin-top: 2px; }
 .ppb-list li { grid-template-columns: 140px 1fr 170px; }
 @media (max-width: 640px) { .ppb-list li { grid-template-columns: minmax(80px, 34%) 1fr auto; } }
+
+/* Quiet alerts */
+.alert-form { max-width: 620px; }
+.alert-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.check-row { display: flex; align-items: center; gap: 8px; flex-direction: row; font-weight: 500; }
+.check-row input { width: auto; }
+.how-to { margin-top: 14px; font-size: 13px; }
+.how-to summary { cursor: pointer; font-weight: 600; }
+.how-to ol { padding-left: 20px; line-height: 1.7; }
+.alerts-card ul { list-style: none; padding: 0; margin: 6px 0 0; }
+.alerts-card li { display: flex; gap: 10px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+.alerts-card li:last-child { border-bottom: 0; }
+.alerts-card .when { color: var(--muted); font-size: 12px; min-width: 64px; font-variant-numeric: tabular-nums; }
+@media (max-width: 640px) { .alert-grid { grid-template-columns: 1fr 1fr; } }
+
+/* Legal pages */
+.legal { line-height: 1.6; padding-bottom: 48px; }
+.legal h2 { margin-top: 28px; font-size: 18px; }
+.legal ul { padding-left: 20px; }
+.legal li { margin: 6px 0; }

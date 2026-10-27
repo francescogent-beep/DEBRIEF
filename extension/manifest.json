@@ -2,8 +2,8 @@
   "manifest_version": 3,
   "name": "Debrief \u2014 Call Logger",
   "short_name": "Debrief",
-  "version": "0.4.0",
-  "description": "Log every answered call in seconds, see where calls die, and sign off your day.",
+  "version": "0.6.0",
+  "description": "Log every answered call in two clicks, track breaks, sign off your day and see your stats. For sales and setting teams.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -28,7 +28,7 @@
     "idle"
   ],
   "host_permissions": [
-    "https://*.supabase.co/*"
+    "https://oiatnoefkakgoctqgrzz.supabase.co/*"
   ],
   "commands": {
     "_execute_action": {

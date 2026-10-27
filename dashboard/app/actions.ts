@@ -147,3 +147,63 @@ export async function resetExportKey(form: FormData) {
   await supabase.rpc("get_export_key", { p_workspace: ws, p_reset: true });
   revalidatePath(`/w/${ws}/settings`);
 }
+
+// ---------------------------------------------------------------------------
+// Quiet alerts (Team & settings → Quiet alerts)
+// ---------------------------------------------------------------------------
+const SLACK_PREFIX = "https://hooks.slack.com/";
+const int = (v: FormDataEntryValue | null, min: number, max: number, fallback: number) => {
+  const n = Math.round(Number(v));
+  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
+};
+
+export async function saveAlertSettings(_: ActionState, form: FormData): Promise<ActionState> {
+  const supabase = await createClient();
+  const ws = String(form.get("workspace_id"));
+  const webhook = String(form.get("slack_webhook") || "").trim();
+  if (webhook && !webhook.startsWith(SLACK_PREFIX)) {
+    return { error: "That doesn't look like a Slack webhook. It should start with https://hooks.slack.com/" };
+  }
+  const start = int(form.get("start_hour"), 0, 23, 8);
+  const end = int(form.get("end_hour"), 1, 24, 20);
+  if (end <= start) return { error: "The end hour must be after the start hour." };
+  const row = {
+    workspace_id: ws,
+    enabled: form.get("enabled") === "on",
+    quiet_minutes: int(form.get("quiet_minutes"), 10, 240, 30),
+    start_hour: start,
+    end_hour: end,
+    tz: process.env.NEXT_PUBLIC_TEAM_TZ || "America/New_York",
+    slack_enabled: form.get("slack_enabled") === "on" && !!webhook,
+    slack_webhook: webhook || null,
+    app_url: String(form.get("app_url") || "").replace(/\/$/, "") || undefined,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from("alert_settings").upsert(row, { onConflict: "workspace_id" });
+  if (error) return { error: error.message };
+  revalidatePath(`/w/${ws}`, "layout");
+  return { ok: "Saved" };
+}
+
+export async function testSlack(_: ActionState, form: FormData): Promise<ActionState> {
+  const supabase = await createClient();
+  const ws = String(form.get("workspace_id"));
+  const webhook = String(form.get("slack_webhook") || "").trim();
+  if (!webhook.startsWith(SLACK_PREFIX)) return { error: "Paste a Slack webhook URL first (https://hooks.slack.com/…)." };
+  const { data: isManager } = await supabase.rpc("is_manager", { ws });
+  if (!isManager) return { error: "Only managers can do this." };
+  const { data: w } = await supabase.from("workspaces").select("name").eq("id", ws).single();
+  try {
+    const res = await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: `:white_check_mark: Debrief is connected. Quiet alerts for *${w?.name ?? "your team"}* will appear in this channel.`,
+      }),
+    });
+    if (!res.ok) return { error: `Slack said: ${(await res.text()) || res.status}. Check the webhook URL.` };
+    return { ok: "Test message sent. Check your Slack channel." };
+  } catch {
+    return { error: "Couldn't reach Slack. Check the webhook URL." };
+  }
+}

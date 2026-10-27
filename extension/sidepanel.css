@@ -252,3 +252,9 @@ html.web .toast { left: 50%; right: auto; width: min(416px, calc(100vw - 24px));
 .ask-card p { margin: 0 0 8px; font-size: 13px; line-height: 1.4; }
 .ask-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
 .ask-buttons .btn { flex: 1 1 auto; }
+
+/* Start my day */
+.start-row { margin: -4px 0 10px; text-align: center; }
+.start-row .start-btn { width: 100%; padding: 12px; font-size: 15px; }
+.start-row p { margin: 6px 0 0; }
+.started-label { align-self: center; white-space: nowrap; }

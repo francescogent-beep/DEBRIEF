@@ -4,6 +4,7 @@ import { CopyButton } from "@/components/copy-button";
 import { EXPORTS } from "@/lib/exports";
 import { requireUser } from "@/lib/supabase-server";
 import { TopBar } from "@/components/topbar";
+import { AlertSettingsForm } from "@/components/alert-settings";
 import {
   addClient,
   addOption,
@@ -33,7 +34,7 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
   const { data: ws } = await supabase.from("workspaces").select("id,name,min_dials,min_booked").eq("id", id).single();
   if (!ws) notFound();
 
-  const [{ data: invites }, { data: members }, { data: options }, { data: clients }] = await Promise.all([
+  const [{ data: invites }, { data: members }, { data: options }, { data: clients }, { data: alertRow }] = await Promise.all([
     supabase.from("invites").select("*").eq("workspace_id", id).order("created_at", { ascending: false }),
     supabase
       .from("memberships")
@@ -42,6 +43,7 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
       .order("created_at"),
     supabase.from("options").select("*").eq("workspace_id", id).order("sort"),
     supabase.from("clients").select("*").eq("workspace_id", id).order("sort").order("name"),
+    supabase.from("alert_settings").select("*").eq("workspace_id", id).maybeSingle(),
   ]);
 
   const { data: isManager } = await supabase.rpc("is_manager", { ws: id });
@@ -187,6 +189,43 @@ export default async function Settings({ params }: { params: Promise<{ id: strin
             )}
           </section>
         </div>
+
+        {/* Quiet alerts */}
+        <section className="card" id="alerts">
+          <h2>Quiet alerts</h2>
+          <p className="muted small">
+            Every 5 minutes Debrief checks for reps who have started their day but haven&apos;t logged a pick-up for
+            the time below. Reps on a break or already signed off are skipped, and each quiet spell is alerted once.
+            Alerts show on the Dashboard and, if connected, in Slack.
+          </p>
+          <AlertSettingsForm
+            workspaceId={id}
+            appUrl={`${proto}://${host}`}
+            s={{
+              enabled: alertRow?.enabled ?? true,
+              quiet_minutes: alertRow?.quiet_minutes ?? 30,
+              start_hour: alertRow?.start_hour ?? 8,
+              end_hour: alertRow?.end_hour ?? 20,
+              slack_enabled: alertRow?.slack_enabled ?? false,
+              slack_webhook: alertRow?.slack_webhook ?? null,
+            }}
+          />
+          <details className="how-to">
+            <summary>How to get a Slack webhook URL (2 minutes)</summary>
+            <ol>
+              <li>
+                Go to <a href="https://api.slack.com/apps?new_app=1" target="_blank" rel="noreferrer">api.slack.com/apps</a>{" "}
+                → <b>Create New App</b> → <b>From scratch</b>. Name it &quot;Debrief&quot; and pick your workspace.
+              </li>
+              <li>
+                Open <b>Incoming Webhooks</b>, switch it <b>On</b>, then click <b>Add New Webhook to Workspace</b>.
+              </li>
+              <li>Pick the channel for alerts (e.g. #sales-floor) and click <b>Allow</b>.</li>
+              <li>Copy the URL that starts with https://hooks.slack.com/, paste it above, tick “Send alerts to Slack”, save and send a test.</li>
+            </ol>
+            <p className="muted small">Keep the URL private: anyone who has it can post to that channel.</p>
+          </details>
+        </section>
 
         {/* Exports */}
         <section className="card" id="export">

@@ -23,6 +23,7 @@ const state = {
   manualDials: new Set(), // clients the rep added to the dials section by hand
   breakOpen: null,       // { id, started_at } while the rep is on a break
   breaksToday: [],       // [{ s, e }] ms — breaks in this shift (for gap maths)
+  dayStart: null,        // ISO time the rep pressed "Start my day" this shift
 };
 const CLIENT_KEY = (ws) => `debrief.client.${ws}`;
 const NO_CLIENT = "none";
@@ -294,7 +295,7 @@ async function undoBreak(id) {
 // ---------------------------------------------------------------------------
 const GAP_ASK_MIN = 30;
 
-function askAboutGap(savedLog, prevAt) {
+function askAboutGap(savedLog, prevAt, fromStart = false) {
   const end = Date.parse(savedLog.created_at);
   const gapMs = end - prevAt - overlapMs(prevAt, end);
   if (gapMs < GAP_ASK_MIN * 60000) return;
@@ -309,7 +310,9 @@ function askAboutGap(savedLog, prevAt) {
   const options = [15, 30, 45, 60].filter((m) => m < gap - 2);
   ask({
     key: `gap-${savedLog.id}`,
-    text: `${gap} min since your previous pick-up. Were you on a break?`,
+    text: fromStart
+      ? `${gap} min since you started your day. Were you on a break?`
+      : `${gap} min since your previous pick-up. Were you on a break?`,
     buttons: [
       {
         label: "No, I was dialing",
@@ -631,7 +634,9 @@ async function saveLog() {
   if (state.breakOpen) await endBreak({ quiet: true });
   await resolveAsksOnLog();
   const prevLog = state.logs.find((l) => !l.pending);
-  const prevAt = prevLog ? Date.parse(prevLog.created_at) : null;
+  const firstOfShift = !prevLog;
+  const startAt = state.dayStart ? Date.parse(state.dayStart) : null;
+  const prevAt = prevLog ? Date.parse(prevLog.created_at) : startAt;
   const d = state.draft;
   const row = {
     workspace_id: state.wsId,
@@ -656,7 +661,8 @@ async function saveLog() {
     renderToday();
     const label = state.byId.get(row.outcome_id)?.label || "Logged";
     toast(`${label} ✓`, () => deleteLog(saved.id));
-    if (prevAt) askAboutGap(saved, prevAt);
+    if (prevAt) askAboutGap(saved, prevAt, !prevLog);
+    else if (firstOfShift) askWhenStarted(saved);
   } catch (err) {
     if (err instanceof ApiError && err.status && err.status < 500 && err.status !== 401) {
       state.logs = state.logs.filter((l) => l !== temp);
@@ -730,6 +736,14 @@ async function loadToday() {
       `&workspace_id=eq.${state.wsId}&rep_id=eq.${me}&order=updated_at.desc&limit=1`
   );
   state.lastEod = last || null;
+  try {
+    const [st] = await db.select(
+      "day_starts",
+      `select=started_at&workspace_id=eq.${state.wsId}&rep_id=eq.${me}` +
+        `&started_at=gt.${encodeURIComponent(shiftStart().toISOString())}&order=started_at.desc&limit=1`
+    );
+    state.dayStart = st?.started_at || null;
+  } catch { state.dayStart = null; }
   state.logs = await db.select(
     "call_logs",
     `select=id,outcome_id,stage_id,objection_id,client_id,note,created_at&workspace_id=eq.${state.wsId}` +
@@ -745,7 +759,70 @@ function counts() {
   return { convos, booked };
 }
 
+function renderStart() {
+  const started = !!state.dayStart || state.logs.length > 0;
+  $("#start-row").hidden = started;
+  const lbl = $("#started-label");
+  const t = state.dayStart || state.logs[state.logs.length - 1]?.created_at;
+  lbl.hidden = !t;
+  if (t) lbl.textContent = `Started ${new Date(t).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`;
+}
+
+async function saveDayStart(startedAtMs, source) {
+  const row = {
+    workspace_id: state.wsId,
+    rep_id: currentUser().id,
+    day: dayOf(new Date(startedAtMs)),
+    started_at: new Date(startedAtMs).toISOString(),
+    source,
+  };
+  await db.upsert("day_starts", row, "workspace_id,rep_id,day");
+  state.dayStart = row.started_at;
+  renderStart();
+}
+
+async function startDay() {
+  if (state.dayStart) return;
+  const now = Date.now();
+  state.dayStart = new Date(now).toISOString(); // optimistic
+  renderStart();
+  try {
+    await saveDayStart(now, "button");
+    toast("Day started 🚀 Good luck!");
+  } catch (err) {
+    state.dayStart = null;
+    renderStart();
+    toast(`Couldn't start the day: ${err.message}`);
+  }
+}
+$("#start-btn").addEventListener("click", startDay);
+
+// First pick-up of the shift without "Start my day": ask when dialing started.
+function askWhenStarted(firstLog) {
+  const logged = Date.parse(firstLog.created_at);
+  const floor = Math.max(shiftStart().getTime(), logged - 12 * 3600000);
+  const options = [15, 30, 60, 120].filter((m) => logged - m * 60000 >= floor);
+  const set = (m, source) => async () => {
+    try {
+      await saveDayStart(logged - m * 60000, source);
+      if (m > 0) toast(`Got it — you started dialing ${m >= 60 ? `${m / 60}h` : `${m} min`} before this pick-up`);
+    } catch (err) { toast(`Couldn't save: ${err.message}`); }
+  };
+  ask({
+    key: `start-${firstLog.id}`,
+    text: "First pick-up of the day 👋 When did you start dialing?",
+    buttons: [
+      { label: "Just now", primary: true, run: set(0, "asked") },
+      ...options.map((m) => ({ label: m >= 60 ? `${m / 60}h ago` : `${m} min ago`, run: set(m, "asked") })),
+    ],
+    timeoutMs: 10 * 60000,
+    onTimeout: set(0, "auto"),
+    onLog: set(0, "auto"),
+  });
+}
+
 function renderToday() {
+  renderStart();
   const { convos, booked } = counts();
   $("#stat-convos").textContent = convos;
   $("#stat-booked").textContent = booked;

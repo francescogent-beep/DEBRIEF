@@ -38,7 +38,7 @@ type Stats = {
   objections: Opt[];
 };
 
-const QUIET_MIN = 45; // no call logged for this long during a shift = "quiet"
+const QUIET_DEFAULT = 30; // no pick-up for this long during a shift = "quiet" (Team & settings → Quiet alerts)
 const BREAK_MAX_MS = 2 * 60 * 60 * 1000; // a forgotten break counts for at most 2h
 const durTxt = (mins: number) => (mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`);
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -111,7 +111,8 @@ export default async function Dashboard({
   }
   const stats = statsData as Stats;
 
-  const [{ data: eods }, { data: notes }, { data: breakRows }, { data: dayLogs }] = await Promise.all([
+  const [{ data: eods }, { data: notes }, { data: breakRows }, { data: dayLogs }, { data: alertRows }, { data: startRows }, { data: alertCfg }] =
+    await Promise.all([
     supabase
       .from("eods")
       .select(
@@ -143,7 +144,30 @@ export default async function Dashboard({
       .lt("created_at", to.toISOString())
       .order("created_at")
       .limit(5000),
+    supabase
+      .from("alerts")
+      .select("id,rep_id,quiet_since,minutes,slack_sent,created_at")
+      .eq("workspace_id", id)
+      .gte("created_at", from.toISOString())
+      .lt("created_at", to.toISOString())
+      .order("created_at", { ascending: false })
+      .limit(100),
+    supabase
+      .from("day_starts")
+      .select("rep_id,started_at")
+      .eq("workspace_id", id)
+      .gte("started_at", from.toISOString())
+      .lt("started_at", to.toISOString()),
+    supabase.from("alert_settings").select("quiet_minutes").eq("workspace_id", id).maybeSingle(),
   ]);
+  const QUIET_MIN = alertCfg?.quiet_minutes ?? QUIET_DEFAULT;
+  // "Start my day" per rep for this day (the earliest if several shifts).
+  const startOf = new Map<string, number>();
+  for (const st of startRows ?? []) {
+    const t = Date.parse(st.started_at as string);
+    const rep = st.rep_id as string;
+    if (!startOf.has(rep) || t < startOf.get(rep)!) startOf.set(rep, t);
+  }
 
   const labels = new Map<string, Opt>();
   for (const o of [...stats.outcomes, ...stats.stages, ...stats.objections]) labels.set(o.id, o);
@@ -185,11 +209,12 @@ export default async function Dashboard({
   // no "I was dialing" answer from the rep.
   const unexplained = new Map<string, number>();
   {
-    const last = new Map<string, number>();
+    const last = new Map<string, number>(startOf);
     for (const l of dayLogs ?? []) {
       const rep = l.rep_id as string;
       const t = Date.parse(l.created_at as string);
-      const prev = last.get(rep);
+      const prevRaw = last.get(rep);
+      const prev = prevRaw != null && prevRaw < t ? prevRaw : undefined;
       last.set(rep, t);
       if (prev == null || l.gap_confirmed) continue;
       const brk = breaks
@@ -208,7 +233,14 @@ export default async function Dashboard({
     if (eodByRep.has(r.user_id)) return { key: "done", text: "Signed off", order: 3 };
     const ob = openBreak(r.user_id);
     if (ob) return { key: "break", text: `On break ${durTxt(Math.max(1, Math.round((now - ob.s) / 60_000)))}`, order: 1 };
-    if (!r.last_log) return { key: "idle", text: isToday ? "No calls yet" : "No calls", order: 2 };
+    const started = startOf.get(r.user_id);
+    if (!r.last_log && started && isToday) {
+      const mins = Math.round((now - Math.max(started, lastBreakEnd(r.user_id))) / 60_000);
+      return mins < QUIET_MIN
+        ? { key: "live", text: "Dialing, no pick-up yet", order: 0 }
+        : { key: "quiet", text: `No pick-up yet ${durTxt(mins)}`, order: 1 };
+    }
+    if (!r.last_log) return { key: "idle", text: isToday ? "Not started" : "No calls", order: 2 };
     if (!isToday) return { key: "none", text: "No sign-off", order: 1 };
     // Quiet = no call since the last call or the end of the last break, whichever is later.
     const since = Math.max(new Date(r.last_log).getTime(), lastBreakEnd(r.user_id));
@@ -296,6 +328,40 @@ export default async function Dashboard({
           </p>
         )}
 
+        {/* Quiet alerts raised this day */}
+        {(alertRows?.length ?? 0) > 0 && (
+          <section className="card alerts-card">
+            <div className="card-head">
+              <h2>Quiet alerts</h2>
+              <a href={`/w/${id}/settings#alerts`} className="muted small">
+                Alert settings
+              </a>
+            </div>
+            <ul>
+              {alertRows!.map((a) => {
+                const rep = stats.reps.find((r) => r.user_id === a.rep_id);
+                const fmt = (iso: string) =>
+                  new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ });
+                const back = rep?.last_log && Date.parse(rep.last_log) > Date.parse(a.quiet_since as string) ? rep.last_log : null;
+                return (
+                  <li key={a.id}>
+                    <span className="when">{fmt(a.created_at as string)}</span>
+                    <span>
+                      <b>{rep ? name(rep) : "A rep"}</b> had no pick-up for {a.minutes} min (since {fmt(a.quiet_since as string)}).{" "}
+                      {back ? (
+                        <span className="good-text">Back at {fmt(back)}.</span>
+                      ) : isToday ? (
+                        <span className="bad-text">Still quiet.</span>
+                      ) : null}
+                      {a.slack_sent && <span className="tag">Slack</span>}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        )}
+
         {/* Team */}
         <section className="card">
           <h2>Team</h2>
@@ -310,6 +376,7 @@ export default async function Dashboard({
                   <tr>
                     <th>Rep</th>
                     <th>Status</th>
+                    <th title="When the rep pressed Start my day (or their first pick-up)">Started</th>
                     <th className="num">Pick-ups</th>
                     <th className="num">Booked</th>
                     <th className="num">Book rate</th>
@@ -333,6 +400,16 @@ export default async function Dashboard({
                       </td>
                       <td>
                         <span className={`status status-${s.key}`}>{s.text}</span>
+                      </td>
+                      <td className="muted nowrap">
+                        {(() => {
+                          const st = startOf.get(r.user_id);
+                          const first = (dayLogs ?? []).find((l) => l.rep_id === r.user_id)?.created_at as string | undefined;
+                          const t = st ?? (first ? Date.parse(first) : null);
+                          if (!t) return "—";
+                          const txt = new Date(t).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ });
+                          return st ? txt : <span title="Didn't press Start my day: first pick-up time">{txt}*</span>;
+                        })()}
                       </td>
                       <td className="num">{r.conversations}</td>
                       <td className="num good-text">{r.booked}</td>

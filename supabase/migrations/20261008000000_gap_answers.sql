@@ -8,20 +8,24 @@
 -- ============================================================================
 
 alter table public.breaks add column if not exists source text not null default 'manual';
-alter table public.breaks drop constraint if exists breaks_source_check;
-alter table public.breaks add constraint breaks_source_check check (source in ('manual', 'idle', 'gap'));
--- Sanity cap: one break can't be longer than 4 hours.
-alter table public.breaks drop constraint if exists breaks_max_length;
-alter table public.breaks add constraint breaks_max_length
-  check (ended_at is null or ended_at - started_at <= interval '4 hours') not valid;
-
 alter table public.call_logs add column if not exists gap_confirmed boolean;
+
+-- Additive only (no drops), so it applies without a destructive-change confirmation.
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'breaks_source_check') then
+    alter table public.breaks add constraint breaks_source_check check (source in ('manual', 'idle', 'gap'));
+  end if;
+  -- Sanity cap: one break can't be longer than 4 hours.
+  if not exists (select 1 from pg_constraint where conname = 'breaks_max_length') then
+    alter table public.breaks add constraint breaks_max_length
+      check (ended_at is null or ended_at - started_at <= interval '4 hours') not valid;
+  end if;
+end $$;
 
 -- Reps can undo a break for 15 minutes after it ENDED (auto-detected breaks are
 -- saved when the rep comes back, so started_at can be well in the past).
-drop policy if exists breaks_delete_own on public.breaks;
-create policy breaks_delete_own on public.breaks
-  for delete to authenticated
+alter policy breaks_delete_own on public.breaks
   using (rep_id = auth.uid() and coalesce(ended_at, started_at) > now() - interval '15 minutes');
 
 create or replace function public.workspace_report(

@@ -54,7 +54,7 @@ type Team = {
 type RepReport = {
   targets: { min_dials: number | null; min_booked: number | null };
   stages: { id: string; label: string }[];
-  today: { pickups: number; booked: number; signed_off: boolean };
+  today: { pickups: number; booked: number; signed_off: boolean; started_at?: string | null };
   me: Mine;
   team: Team;
 };
@@ -303,7 +303,12 @@ export default async function MyStats({
         <section className="card today-card">
           <div className="today-row">
             <div>
-              <span className="muted small">Today</span>
+              <span className="muted small">
+                Today
+                {today.started_at
+                  ? ` · started ${new Date(today.started_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ })}`
+                  : ""}
+              </span>
               <p className="today-nums">
                 <b>{today.pickups}</b> pick-ups · <b className="good-text">{today.booked}</b> booked
               </p>
