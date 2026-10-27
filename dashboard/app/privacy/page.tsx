@@ -4,7 +4,7 @@ export const metadata: Metadata = { title: "Privacy policy · Debrief" };
 
 // Public page (no sign-in), linked from the Chrome Web Store listing.
 const OPERATOR = process.env.NEXT_PUBLIC_LEGAL_NAME || "the publisher shown on Debrief's Chrome Web Store page";
-const CONTACT = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "info@fgdigital.com";
+const CONTACT = process.env.NEXT_PUBLIC_SUPPORT_EMAIL || "info@fgdigitalsystems.com";
 const UPDATED = "October 27, 2026";
 
 export default function Privacy() {

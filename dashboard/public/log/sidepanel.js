@@ -1,4 +1,4 @@
-import { loadSession, currentUser, signIn, signUp, signOut, db, ApiError, handoffUrl } from "./api.js";
+import { loadSession, currentUser, signIn, signUp, signOut, db, ApiError, handoffUrl, requestPasswordReset } from "./api.js";
 import { DASHBOARD_URL, SUPABASE_ANON_KEY } from "./config.js";
 
 // ---------------------------------------------------------------------------
@@ -441,14 +441,19 @@ function promptClient() {
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
-$("#auth-toggle").addEventListener("click", () => {
-  state.authMode = state.authMode === "signin" ? "signup" : "signin";
-  const up = state.authMode === "signup";
+function setAuthMode(mode) {
+  state.authMode = mode;
+  const up = mode === "signup", forgot = mode === "forgot";
   $("#name-field").hidden = !up;
-  $("#auth-submit").textContent = up ? "Create account" : "Sign in";
-  $("#auth-toggle").textContent = up ? "Already have an account? Sign in" : "New here? Create an account";
+  $("#password-field").hidden = forgot;
+  $("#auth-form").password.required = !forgot;
+  $("#auth-submit").textContent = up ? "Create account" : forgot ? "Send reset link" : "Sign in";
+  $("#auth-forgot").hidden = mode !== "signin";
+  $("#auth-toggle").textContent = mode === "signin" ? "New here? Create an account" : "Back to sign in";
   message("#auth-msg", "");
-});
+}
+$("#auth-toggle").addEventListener("click", () => setAuthMode(state.authMode === "signin" ? "signup" : "signin"));
+$("#auth-forgot").addEventListener("click", () => setAuthMode("forgot"));
 
 $("#auth-form").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -459,11 +464,17 @@ $("#auth-form").addEventListener("submit", async (e) => {
   btn.disabled = true;
   message("#auth-msg", "");
   try {
+    if (state.authMode === "forgot") {
+      await requestPasswordReset(email, `${DASHBOARD_URL}/auth/reset`);
+      setAuthMode("signin");
+      message("#auth-msg", "If that email has an account, a reset link is on its way. Open it, pick a new password, then sign in here.", true);
+      return;
+    }
     if (state.authMode === "signup") {
       const { needsConfirmation } = await signUp(email, password, f.get("name").trim());
       if (needsConfirmation) {
+        setAuthMode("signin");
         message("#auth-msg", "Check your inbox to confirm your email, then sign in here.", true);
-        $("#auth-toggle").click();
         return;
       }
     } else {

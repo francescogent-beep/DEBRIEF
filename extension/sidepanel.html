@@ -23,12 +23,13 @@
         <span>Email</span>
         <input name="email" type="email" autocomplete="email" required />
       </label>
-      <label>
+      <label id="password-field">
         <span>Password</span>
         <input name="password" type="password" autocomplete="current-password" minlength="6" required />
       </label>
       <p id="auth-msg" class="msg" hidden></p>
       <button class="btn primary" type="submit" id="auth-submit">Sign in</button>
+      <button class="btn link" type="button" id="auth-forgot">Forgot password?</button>
       <button class="btn link" type="button" id="auth-toggle">New here? Create an account</button>
     </form>
   </section>

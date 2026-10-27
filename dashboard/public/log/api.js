@@ -68,6 +68,20 @@ export async function signUp(email, password, fullName) {
   return { user: data.user || data, needsConfirmation: true };
 }
 
+// Emails a password-reset link. The link opens the website's /auth/reset page.
+export async function requestPasswordReset(email, redirectTo) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`, {
+    method: "POST",
+    headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (res.ok) return;
+  if (res.status === 429)
+    throw new ApiError("Too many reset emails in the last hour. Try again later, or ask your manager.", 429);
+  const data = await res.json().catch(() => ({}));
+  throw new ApiError(data.msg || data.error_description || data.message || "Couldn't send the reset email", res.status);
+}
+
 export async function signOut() {
   if (session?.access_token) {
     fetch(`${SUPABASE_URL}/auth/v1/logout`, {
