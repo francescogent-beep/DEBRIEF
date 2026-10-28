@@ -839,7 +839,7 @@ export default async function Reports({
                   the team.
                 </p>
                 <div className="table-wrap">
-                  <table className="table">
+                  <table className="table wrap-head">
                     <thead>
                       <tr>
                         <th>Rep</th>

@@ -262,6 +262,29 @@ export default async function Dashboard({
   const clientNames = new Map((stats.clients ?? []).filter((c) => c.id).map((c) => [c.id as string, c.name]));
   const hasClients = (stats.clients ?? []).some((c) => c.id);
 
+  // Quiet alerts: newest few on show, older ones folded away.
+  const ALERTS_SHOWN = 5;
+  const renderAlert = (a: NonNullable<typeof alertRows>[number]) => {
+    const rep = stats.reps.find((r) => r.user_id === a.rep_id);
+    const fmt = (iso: string) =>
+      new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ });
+    const back = rep?.last_log && Date.parse(rep.last_log) > Date.parse(a.quiet_since as string) ? rep.last_log : null;
+    return (
+      <li key={a.id}>
+        <span className="when">{fmt(a.created_at as string)}</span>
+        <span>
+          <b>{rep ? name(rep) : "A rep"}</b> had no pick-up for {a.minutes} min (since {fmt(a.quiet_since as string)}).{" "}
+          {back ? (
+            <span className="good-text">Back at {fmt(back)}.</span>
+          ) : isToday ? (
+            <span className="bad-text">Still quiet.</span>
+          ) : null}
+          {a.slack_sent && <span className="tag">Slack</span>}
+        </span>
+      </li>
+    );
+  };
+
   return (
     <>
       <TopBar workspace={ws} active="dashboard">
@@ -338,27 +361,16 @@ export default async function Dashboard({
               </a>
             </div>
             <ul>
-              {alertRows!.map((a) => {
-                const rep = stats.reps.find((r) => r.user_id === a.rep_id);
-                const fmt = (iso: string) =>
-                  new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: TEAM_TZ });
-                const back = rep?.last_log && Date.parse(rep.last_log) > Date.parse(a.quiet_since as string) ? rep.last_log : null;
-                return (
-                  <li key={a.id}>
-                    <span className="when">{fmt(a.created_at as string)}</span>
-                    <span>
-                      <b>{rep ? name(rep) : "A rep"}</b> had no pick-up for {a.minutes} min (since {fmt(a.quiet_since as string)}).{" "}
-                      {back ? (
-                        <span className="good-text">Back at {fmt(back)}.</span>
-                      ) : isToday ? (
-                        <span className="bad-text">Still quiet.</span>
-                      ) : null}
-                      {a.slack_sent && <span className="tag">Slack</span>}
-                    </span>
-                  </li>
-                );
-              })}
+              {alertRows!.slice(0, ALERTS_SHOWN).map(renderAlert)}
             </ul>
+            {alertRows!.length > ALERTS_SHOWN && (
+              <details className="alerts-more">
+                <summary>
+                  Show {alertRows!.length - ALERTS_SHOWN} earlier alert{alertRows!.length - ALERTS_SHOWN === 1 ? "" : "s"}
+                </summary>
+                <ul>{alertRows!.slice(ALERTS_SHOWN).map(renderAlert)}</ul>
+              </details>
+            )}
           </section>
         )}
 
